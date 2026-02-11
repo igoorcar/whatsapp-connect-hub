@@ -102,14 +102,17 @@ export default function Lists() {
 
       // 2. Processar números manuais se houver
       if (manualNumbers.trim()) {
-        const numbers = manualNumbers
+        // Extrai números e remove duplicatas locais antes de enviar ao banco
+        const rawNumbers = manualNumbers
           .split(/[\n,;]/)
           .map(n => n.trim().replace(/\D/g, ""))
           .filter(n => n.length >= 8);
+        
+        const uniqueNumbers = Array.from(new Set(rawNumbers));
 
-        if (numbers.length > 0) {
+        if (uniqueNumbers.length > 0) {
           // Criar/Atualizar contatos
-          const contactsToUpsert = numbers.map(phone => ({
+          const contactsToUpsert = uniqueNumbers.map(phone => ({
             phone,
             tenant_id: TENANT_ID,
           }));
@@ -163,15 +166,20 @@ export default function Lists() {
         const lines = csv.split("\n");
         const contactsToUpsert = [];
         
-        // 1. Parse CSV
+        // 1. Parse CSV e remove duplicatas
+        const seenPhones = new Set();
         for (let i = 1; i < lines.length; i++) {
           const [phone, contactName] = lines[i].split(",");
           if (phone && phone.trim()) {
-            contactsToUpsert.push({
-              phone: phone.trim().replace(/\D/g, ""),
-              name: contactName?.trim() || null,
-              tenant_id: TENANT_ID,
-            });
+            const cleanPhone = phone.trim().replace(/\D/g, "");
+            if (cleanPhone.length >= 8 && !seenPhones.has(cleanPhone)) {
+              seenPhones.add(cleanPhone);
+              contactsToUpsert.push({
+                phone: cleanPhone,
+                name: contactName?.trim() || null,
+                tenant_id: TENANT_ID,
+              });
+            }
           }
         }
 
