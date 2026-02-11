@@ -131,6 +131,13 @@ export default function Inbox() {
           if (selectedId) loadTimeline(selectedId);
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "message_logs", filter: `tenant_id=eq.${TENANT_ID}` },
+        () => {
+          if (selectedId) loadTimeline(selectedId);
+        }
+      )
       .subscribe();
 
     return () => {

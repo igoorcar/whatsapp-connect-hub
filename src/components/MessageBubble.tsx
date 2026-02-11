@@ -74,10 +74,10 @@ export function MessageBubble({
             <span>
               {status === "read" ? (
                 <CheckCheck className="w-4 h-4 text-wa-blue" />
-              ) : status === "delivered" ? (
-                <CheckCheck className="w-4 h-4 text-muted-foreground" />
+              ) : (status === "delivered" || status === "sent") ? (
+                <CheckCheck className={cn("w-4 h-4", status === "delivered" ? "text-muted-foreground" : "text-muted-foreground/50")} />
               ) : (
-                <Check className="w-4 h-4 text-muted-foreground" />
+                <Check className="w-4 h-4 text-muted-foreground/50" />
               )}
             </span>
           )}
