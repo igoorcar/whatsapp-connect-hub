@@ -99,12 +99,13 @@ export default function Campaigns() {
     setSubmitting(true);
     try {
       // 1. Criar a campanha no banco de dados primeiro
+      // Nota: A coluna correta no banco é 'wa_account_id' e não 'account_id'
       const { data: newCampaign, error: createError } = await supabase
         .from("campaigns")
         .insert({
           name,
           description,
-          account_id: selectedAccount,
+          wa_account_id: selectedAccount,
           template_id: selectedTemplate,
           list_id: selectedList,
           tenant_id: TENANT_ID,
