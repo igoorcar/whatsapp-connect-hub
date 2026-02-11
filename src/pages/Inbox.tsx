@@ -110,6 +110,9 @@ export default function Inbox() {
 
   useEffect(() => {
     fetchConversations();
+    // Fallback polling every 30 seconds in case Realtime fails
+    const interval = setInterval(fetchConversations, 30000);
+    return () => clearInterval(interval);
   }, [fetchConversations]);
 
   // Realtime
@@ -329,10 +332,32 @@ export default function Inbox() {
 
       // Call API
       try {
-        await api.sendTextMessage(phone, currentText, accountId);
+        const response = await api.sendTextMessage(phone, currentText, accountId);
+        console.log("Send message response:", response);
+        
+        // Se o n8n não salvou no banco, nós salvamos aqui para garantir que apareça no histórico
+        const { data: existingMsg } = await supabase
+          .from("message_logs")
+          .select("id")
+          .eq("wa_message_id", response[0]?.wa_message_id)
+          .maybeSingle();
+
+        if (!existingMsg && response[0]?.wa_message_id) {
+          console.log("Message not found in DB, saving manually...");
+          await supabase.from("message_logs").insert({
+            tenant_id: TENANT_ID,
+            contact_id: isUUID(selectedId) ? selectedId : null,
+            phone: phone,
+            text_content: currentText,
+            wa_message_id: response[0].wa_message_id,
+            status: response[0].message_status || "sent",
+            sent_at: response[0].sent_at || new Date().toISOString(),
+          });
+        }
+
         toast.success("Mensagem enviada");
-        // We don't remove the temp message here, the Realtime listener will handle it
-        // by matching content/timestamp or we can just let it be replaced when the list reloads
+        // Forçar recarregamento da timeline para garantir que a mensagem apareça
+        setTimeout(() => loadTimeline(selectedId), 500);
       } catch (err) {
         // Remove optimistic message on error
         setTimeline((prev) => prev.filter(m => m.id !== tempId));
