@@ -98,19 +98,36 @@ export default function Campaigns() {
   async function handleStartCampaign() {
     setSubmitting(true);
     try {
-      await api.massDispatch({
-        name,
-        description,
-        account_id: selectedAccount,
-        template_id: selectedTemplate,
-        list_id: selectedList,
-      });
+      // 1. Criar a campanha no banco de dados primeiro
+      const { data: newCampaign, error: createError } = await supabase
+        .from("campaigns")
+        .insert({
+          name,
+          description,
+          account_id: selectedAccount,
+          template_id: selectedTemplate,
+          list_id: selectedList,
+          tenant_id: TENANT_ID,
+          status: 'sending'
+        })
+        .select()
+        .single();
+
+      if (createError) throw createError;
+
+      // 2. Chamar o n8n passando apenas o ID da campanha criada
+      await api.massDispatch(newCampaign.id);
+
       toast.success("Campanha iniciada com sucesso!");
       setShowCreate(false);
       fetchCampaigns();
+      
       // Reset
       setName("");
       setDescription("");
+      setSelectedAccount("");
+      setSelectedTemplate("");
+      setSelectedList("");
       setStep(1);
     } catch (err) {
       console.error("Start campaign error:", err);

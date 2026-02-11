@@ -37,17 +37,20 @@ export const api = {
 
   // Campaigns
   massDispatch: (data: any) => {
-    // Se data for uma string, assumimos que é o campaign_id (novo formato sugerido)
+    // Se data for uma string, é o campaign_id direto
     if (typeof data === 'string') {
       return callN8N('/webhook/mass-dispatch', { 
         campaign_id: data, 
         throttle_ms: 1000 
       });
     }
-    // Se data for um objeto, verificamos se já tem campaign_id ou se é o formato antigo
-    const payload = data.campaign_id 
-      ? { campaign_id: data.campaign_id, throttle_ms: data.throttle_ms || 1000 }
-      : data; // Mantém compatibilidade com o formato antigo se necessário
+    
+    // Se for um objeto, garantimos que enviamos no formato que o n8n espera
+    // O n8n espera campaign_id na raiz do body
+    const payload = {
+      campaign_id: data.campaign_id || data.id, // Suporta objeto de campanha ou objeto com campaign_id
+      throttle_ms: data.throttle_ms || 1000
+    };
       
     return callN8N('/webhook/mass-dispatch', payload);
   }
