@@ -63,13 +63,19 @@ export default function Lists() {
         .eq("id", id)
         .eq("tenant_id", TENANT_ID);
       
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23503') {
+          toast.error("Não é possível excluir esta lista pois ela está vinculada a uma ou mais campanhas.");
+          return;
+        }
+        throw error;
+      }
       
       toast.success("Lista excluída com sucesso");
       fetchLists();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Delete list error:", err);
-      toast.error("Erro ao excluir lista");
+      toast.error(err.message || "Erro ao excluir lista");
     }
   }
 

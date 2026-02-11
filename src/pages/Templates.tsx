@@ -97,13 +97,19 @@ export default function Templates() {
         .eq("id", id)
         .eq("tenant_id", TENANT_ID);
       
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23503') {
+          toast.error("Não é possível excluir este template pois ele está sendo usado em uma ou mais campanhas.");
+          return;
+        }
+        throw error;
+      }
       
       toast.success("Template excluído com sucesso");
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Delete template error:", err);
-      toast.error("Erro ao excluir template");
+      toast.error(err.message || "Erro ao excluir template");
     }
   }
 
