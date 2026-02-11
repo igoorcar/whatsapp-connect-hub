@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, Plus, Eye, Send as SendIcon, Smartphone, Loader2 } from "lucide-react";
+import { FileText, Plus, Eye, Send as SendIcon, Smartphone, Loader2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Template {
@@ -65,20 +65,46 @@ export default function Templates() {
 
   async function fetchData() {
     setLoading(true);
-    const [templatesRes, accountsRes] = await Promise.all([
-      supabase
+    try {
+      const [templatesRes, accountsRes] = await Promise.all([
+        supabase
+          .from("templates")
+          .select("*")
+          .eq("tenant_id", TENANT_ID)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("whatsapp_accounts")
+          .select("id, verified_name, display_phone_number")
+          .eq("tenant_id", TENANT_ID),
+      ]);
+      setTemplates(templatesRes.data || []);
+      setAccounts(accountsRes.data || []);
+    } catch (err) {
+      console.error("Fetch data error:", err);
+      toast.error("Erro ao carregar dados");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteTemplate(id: string) {
+    if (!confirm("Tem certeza que deseja excluir este template?")) return;
+    
+    try {
+      const { error } = await supabase
         .from("templates")
-        .select("*")
-        .eq("tenant_id", TENANT_ID)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("whatsapp_accounts")
-        .select("id, verified_name, display_phone_number")
-        .eq("tenant_id", TENANT_ID),
-    ]);
-    setTemplates(templatesRes.data || []);
-    setAccounts(accountsRes.data || []);
-    setLoading(false);
+        .delete()
+        .eq("id", id)
+        .eq("tenant_id", TENANT_ID);
+      
+      if (error) throw error;
+      
+      toast.success("Template excluído com sucesso");
+      fetchData();
+    } catch (err) {
+      console.error("Delete template error:", err);
+      toast.error("Erro ao excluir template");
+    }
   }
 
   const statusColor: Record<string, string> = {
@@ -181,10 +207,22 @@ export default function Templates() {
             <Card key={template.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
-                  <CardTitle className="text-sm font-semibold">{template.name}</CardTitle>
-                  <Badge className={cn("text-[10px]", statusColor[template.status] || statusColor.PENDING)}>
-                    {template.status}
-                  </Badge>
+                  <div className="flex-1">
+                    <CardTitle className="text-sm font-semibold">{template.name}</CardTitle>
+                    <Badge className={cn("text-[10px] mt-1", statusColor[template.status] || statusColor.PENDING)}>
+                      {template.status}
+                    </Badge>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => handleDeleteTemplate(template.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>

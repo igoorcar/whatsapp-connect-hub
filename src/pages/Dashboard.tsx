@@ -32,12 +32,20 @@ interface Stats {
   totalContacts: number;
 }
 
-const CHART_COLORS = [
-  "hsl(152, 69%, 49%)",
-  "hsl(0, 84%, 60%)",
-  "hsl(210, 90%, 55%)",
-  "hsl(210, 11%, 70%)",
-];
+  const CHART_COLORS: Record<string, string> = {
+    "POSITIVO": "hsl(152, 69%, 49%)",
+    "NEGATIVO": "hsl(0, 84%, 60%)",
+    "INTERESSADO": "hsl(210, 90%, 55%)",
+    "NAO_INTERESSADO": "hsl(0, 0%, 70%)",
+    "UNCLASSIFIED": "hsl(210, 11%, 70%)",
+  };
+  
+  const DEFAULT_COLORS = [
+    "hsl(152, 69%, 49%)",
+    "hsl(0, 84%, 60%)",
+    "hsl(210, 90%, 55%)",
+    "hsl(210, 11%, 70%)",
+  ];
 
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats>({
@@ -120,7 +128,9 @@ export default function Dashboard() {
         classMap[c] = (classMap[c] || 0) + 1;
       });
       setClassificationData(
-        Object.entries(classMap).map(([name, value]) => ({ name, value }))
+        Object.entries(classMap)
+          .map(([name, value]) => ({ name, value }))
+          .sort((a, b) => b.value - a.value)
       );
     } catch (err) {
       console.error("Dashboard fetch error:", err);
@@ -280,8 +290,8 @@ export default function Dashboard() {
                     nameKey="name"
                     paddingAngle={4}
                   >
-                    {classificationData.map((_, idx) => (
-                      <Cell key={idx} fill={CHART_COLORS[idx % CHART_COLORS.length]} />
+                    {classificationData.map((entry, idx) => (
+                      <Cell key={idx} fill={CHART_COLORS[entry.name] || DEFAULT_COLORS[idx % DEFAULT_COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip />
@@ -295,9 +305,9 @@ export default function Dashboard() {
             <div className="flex flex-wrap gap-3 mt-2">
               {classificationData.map((d, idx) => (
                 <div key={d.name} className="flex items-center gap-1.5 text-xs">
-                  <div
+                    <div
                     className="w-2.5 h-2.5 rounded-full"
-                    style={{ backgroundColor: CHART_COLORS[idx % CHART_COLORS.length] }}
+                    style={{ backgroundColor: CHART_COLORS[d.name] || DEFAULT_COLORS[idx % DEFAULT_COLORS.length] }}
                   />
                   <span className="text-muted-foreground">
                     {d.name} ({d.value})

@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { api } from "@/lib/api";
+import { Textarea } from "@/components/ui/textarea";import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -25,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Send, Clock, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { Plus, Send, Clock, CheckCircle2, AlertCircle, Loader2, Trash2 } from "lucide-react";
 
 interface Campaign {
   id: string;
@@ -72,6 +71,26 @@ export default function Campaigns() {
     fetchCampaigns();
     fetchMetadata();
   }, []);
+
+  async function handleDeleteCampaign(id: string) {
+    if (!confirm("Tem certeza que deseja excluir esta campanha?")) return;
+    
+    try {
+      const { error } = await supabase
+        .from("campaigns")
+        .delete()
+        .eq("id", id)
+        .eq("tenant_id", TENANT_ID);
+      
+      if (error) throw error;
+      
+      toast.success("Campanha excluída com sucesso");
+      fetchCampaigns();
+    } catch (err) {
+      console.error("Delete campaign error:", err);
+      toast.error("Erro ao excluir campanha");
+    }
+  }
 
   async function fetchCampaigns() {
     setLoading(true);
@@ -263,11 +282,21 @@ export default function Campaigns() {
               <Card key={campaign.id} className="hover:shadow-md transition-shadow">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <CardTitle className="text-sm font-semibold">{campaign.name}</CardTitle>
-                    <Badge className={config.color}>
-                      <StatusIcon className="w-3 h-3 mr-1" />
-                      {config.label}
-                    </Badge>
+                    <div className="flex-1">
+                      <CardTitle className="text-sm font-semibold">{campaign.name}</CardTitle>
+                      <Badge className={cn("mt-1", config.color)}>
+                        <StatusIcon className="w-3 h-3 mr-1" />
+                        {config.label}
+                      </Badge>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => handleDeleteCampaign(campaign.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                   {campaign.description && (
                     <p className="text-xs text-muted-foreground">{campaign.description}</p>

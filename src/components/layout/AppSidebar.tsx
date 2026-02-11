@@ -18,7 +18,7 @@ const navigation = [
   { name: "Templates", href: "/templates", icon: FileText },
   { name: "Listas", href: "/lists", icon: Users },
   { name: "Campanhas", href: "/campaigns", icon: Send },
-  { name: "Inbox", href: "/inbox", icon: MessageSquare },
+
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
 ];
 

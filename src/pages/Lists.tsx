@@ -15,7 +15,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Users, Upload, Loader2 } from "lucide-react";
+import { Plus, Users, Upload, Loader2, Trash2 } from "lucide-react";
 
 interface ContactList {
   id: string;
@@ -51,6 +51,26 @@ export default function Lists() {
       .order("created_at", { ascending: false });
     setLists(data || []);
     setLoading(false);
+  }
+
+  async function handleDeleteList(id: string) {
+    if (!confirm("Tem certeza que deseja excluir esta lista?")) return;
+    
+    try {
+      const { error } = await supabase
+        .from("contact_lists")
+        .delete()
+        .eq("id", id)
+        .eq("tenant_id", TENANT_ID);
+      
+      if (error) throw error;
+      
+      toast.success("Lista excluída com sucesso");
+      fetchLists();
+    } catch (err) {
+      console.error("Delete list error:", err);
+      toast.error("Erro ao excluir lista");
+    }
   }
 
   async function handleCreateList() {
@@ -200,7 +220,20 @@ export default function Lists() {
                     <Users className="w-5 h-5 text-primary" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-foreground text-sm">{list.name}</h3>
+                    <div className="flex items-start justify-between">
+                      <h3 className="font-semibold text-foreground text-sm">{list.name}</h3>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteList(list.id);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                     {list.description && (
                       <p className="text-xs text-muted-foreground mt-0.5">{list.description}</p>
                     )}
