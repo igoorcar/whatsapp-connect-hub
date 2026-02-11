@@ -266,10 +266,10 @@ export default function Inbox() {
 
     setSending(true);
     const currentText = messageText;
-    setMessageText(""); // Clear input immediately for better UX
+    setMessageText(""); // Limpa o input imediatamente para melhor UX
 
     try {
-      // Get first active WhatsApp account
+      // 1. Buscar conta WhatsApp ativa
       const { data: accounts } = await supabase
         .from("whatsapp_accounts")
         .select("id, account_status")
@@ -283,91 +283,82 @@ export default function Inbox() {
       if (!activeAccount) {
         toast.error("Nenhuma conta WhatsApp encontrada.");
         setMessageText(currentText);
+        setSending(false);
         return;
       }
 
       const accountId = activeAccount.id;
       const phone = contact?.phone || selectedId;
 
-      // 1. Salvar a mensagem no banco de dados para persistência
-      // Usamos a tabela 'messages' para chat individual pois ela suporta o conteúdo da mensagem
-      const { data: logData, error: logError } = await supabase
-        .from("messages")
-        .insert({
-          tenant_id: TENANT_ID,
-          contact_id: (contact?.id && isUUID(contact.id)) ? contact.id : (isUUID(selectedId) ? selectedId : null),
-          phone: phone,
-          content: currentText,
-          direction: 'sent',
-          status: 'sent',
-          sent_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+      // 2. Adicionar mensagem IMEDIATAMENTE à timeline local (Feedback Visual Instantâneo)
+      const tempId = crypto.randomUUID();
+      const newMessage: TimelineMsg = {
+        id: tempId,
+        type: "sent",
+        content: currentText,
+        timestamp: new Date().toISOString(),
+        status: 'sending'
+      };
+      setTimeline(prev => [...prev, newMessage]);
 
-      if (logError) {
-        console.error("Error logging message:", logError);
-        // Fallback para message_logs se a tabela messages falhar por algum motivo de schema
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from("message_logs")
-          .insert({
-            tenant_id: TENANT_ID,
-            wa_account_id: accountId,
-            campaign_id: accountId,
-            contact_id: (contact?.id && isUUID(contact.id)) ? contact.id : (isUUID(selectedId) ? selectedId : "00000000-0000-0000-0000-000000000001"),
-            phone: phone,
-            status: 'sent',
-            sent_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (fallbackError) {
-          console.error("Fallback error:", fallbackError);
-          toast.error("Erro ao salvar mensagem no banco de dados");
-          setMessageText(currentText);
-          return;
-        }
-        
-        // Se usou fallback, logData recebe fallbackData
-        const newMessage: TimelineMsg = {
-          id: fallbackData.id,
-          type: "sent",
-          content: currentText,
-          timestamp: fallbackData.sent_at || new Date().toISOString(),
-          status: 'sent'
-        };
-        setTimeline(prev => [...prev, newMessage]);
-      } else {
-        // Adicionar mensagem imediatamente à timeline para feedback instantâneo
-        const newMessage: TimelineMsg = {
-          id: logData.id,
-          type: "sent",
-          content: currentText,
-          timestamp: logData.sent_at || new Date().toISOString(),
-          status: 'sent'
-        };
-        setTimeline(prev => [...prev, newMessage]);
-      }
-
-      // 2. Chamar a API para enviar via WhatsApp
+      // 3. Chamar o Webhook do n8n PRIMEIRO (Prioridade: Envio da Mensagem)
+      let apiSuccess = false;
       try {
         await api.sendTextMessage(phone, currentText, accountId);
+        apiSuccess = true;
         toast.success("Mensagem enviada");
       } catch (apiError) {
         console.error("Error sending via API:", apiError);
-        toast.warning("Mensagem salva, mas houve erro ao enviar via WhatsApp");
+        toast.error("Erro ao enviar via WhatsApp, mas tentaremos salvar o log.");
       }
-      
-      // Recarregar timeline para garantir sincronia completa com o banco
-      setTimeout(() => {
-        if (selectedId) loadTimeline(selectedId);
-      }, 500);
+
+      // 4. Persistência no Banco de Dados (Em segundo plano, não bloqueia o envio)
+      // Tentamos salvar na tabela 'messages' ou 'message_logs'
+      const saveToDatabase = async () => {
+        try {
+          const { data: logData, error: logError } = await supabase
+            .from("messages")
+            .insert({
+              tenant_id: TENANT_ID,
+              contact_id: (contact?.id && isUUID(contact.id)) ? contact.id : (isUUID(selectedId) ? selectedId : null),
+              phone: phone,
+              content: currentText,
+              direction: 'sent',
+              status: apiSuccess ? 'sent' : 'failed',
+              sent_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (logError) {
+            // Fallback para message_logs se 'messages' falhar
+            await supabase.from("message_logs").insert({
+              tenant_id: TENANT_ID,
+              wa_account_id: accountId,
+              campaign_id: accountId,
+              contact_id: (contact?.id && isUUID(contact.id)) ? contact.id : (isUUID(selectedId) ? selectedId : "00000000-0000-0000-0000-000000000001"),
+              phone: phone,
+              status: apiSuccess ? 'sent' : 'failed',
+              sent_at: new Date().toISOString()
+            });
+          }
+        } catch (dbErr) {
+          console.error("Database persistence error:", dbErr);
+        } finally {
+          // Recarregar timeline após um pequeno delay para sincronizar IDs reais do banco
+          setTimeout(() => {
+            if (selectedId) loadTimeline(selectedId);
+          }, 1000);
+        }
+      };
+
+      // Executa a persistência sem dar await (não bloqueia a UI)
+      saveToDatabase();
       
     } catch (err) {
       console.error("Send message error:", err);
-      toast.error("Erro ao enviar mensagem");
-      setMessageText(currentText); // Restore text on error
+      toast.error("Erro crítico ao processar envio");
+      setMessageText(currentText);
     } finally {
       setSending(false);
     }
