@@ -12,6 +12,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import {
   LineChart,
   Line,
@@ -192,32 +193,30 @@ export default function Dashboard() {
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((kpi) => (
-          <Card key={kpi.title} className="hover:shadow-md transition-shadow">
-            <CardContent className="p-5">
+        {kpis.map((kpi, idx) => (
+          <Card key={kpi.title} className="hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border-none bg-gradient-to-br from-card to-muted/30">
+            <CardContent className="p-6">
               <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{kpi.title}</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{kpi.value}</p>
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{kpi.title}</p>
+                  <p className="text-3xl font-black text-foreground tracking-tight">{kpi.value}</p>
                 </div>
-                <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
-                  <kpi.icon className="w-5 h-5 text-primary" />
+                <div className={cn(
+                  "w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner",
+                  kpi.trendUp ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"
+                )}>
+                  <kpi.icon className="w-6 h-6" />
                 </div>
               </div>
-              <div className="flex items-center gap-1 mt-3">
-                {kpi.trendUp ? (
-                  <ArrowUpRight className="w-4 h-4 text-primary" />
-                ) : (
-                  <ArrowDownRight className="w-4 h-4 text-destructive" />
-                )}
-                <span
-                  className={`text-xs font-medium ${
-                    kpi.trendUp ? "text-primary" : "text-destructive"
-                  }`}
-                >
+              <div className="flex items-center gap-2 mt-4">
+                <div className={cn(
+                  "flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold",
+                  kpi.trendUp ? "bg-primary/20 text-primary" : "bg-destructive/20 text-destructive"
+                )}>
+                  {kpi.trendUp ? <ArrowUpRight className="w-3 h-3 mr-0.5" /> : <ArrowDownRight className="w-3 h-3 mr-0.5" />}
                   {kpi.trend}
-                </span>
-                <span className="text-xs text-muted-foreground">vs mês anterior</span>
+                </div>
+                <span className="text-[10px] font-medium text-muted-foreground">vs mês anterior</span>
               </div>
             </CardContent>
           </Card>

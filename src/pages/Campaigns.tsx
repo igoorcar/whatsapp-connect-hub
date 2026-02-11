@@ -101,6 +101,7 @@ export default function Campaigns() {
       await api.massDispatch({
         name,
         description,
+        wa_account_id: selectedAccount,
         account_id: selectedAccount,
         template_id: selectedTemplate,
         list_id: selectedList,
