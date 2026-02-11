@@ -291,16 +291,21 @@ export default function Inbox() {
       {/* Sidebar - Conversations List */}
       <div className="w-[380px] border-r border-border flex flex-col bg-card shrink-0">
         {/* Header */}
-        <div className="bg-wa-header text-primary-foreground px-4 py-3">
-          <h2 className="text-base font-semibold">Inbox</h2>
-          <div className="mt-2 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary-foreground/60" />
+        <div className="p-4 border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold tracking-tight">Mensagens</h2>
+            <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+              {filteredConvos.length}
+            </Badge>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               type="text"
               placeholder="Buscar conversas..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg bg-primary-foreground/10 text-primary-foreground placeholder:text-primary-foreground/50 text-sm border-none outline-none focus:bg-primary-foreground/20 transition-colors"
+              className="w-full pl-9 pr-3 py-2 rounded-xl bg-muted/50 text-sm border-none outline-none focus:ring-2 focus:ring-primary/20 transition-all"
             />
           </div>
         </div>
@@ -355,29 +360,38 @@ export default function Inbox() {
                   selectedId === convo.contactId && "bg-accent"
                 )}
               >
-                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-                  <User className="w-5 h-5 text-muted-foreground" />
+                <div className="relative shrink-0">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/10">
+                    <User className="w-6 h-6 text-primary" />
+                  </div>
+                  {convo.unread && convo.unread > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-card">
+                      {convo.unread}
+                    </span>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground truncate">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-sm font-semibold text-foreground truncate">
                       {convo.contactName}
                     </span>
-                    <span className="text-[11px] text-muted-foreground shrink-0">
+                    <span className="text-[10px] font-medium text-muted-foreground shrink-0">
                       {format(new Date(convo.lastTimestamp), "HH:mm")}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                  <p className="text-xs text-muted-foreground truncate line-clamp-1 mb-1.5">
                     {convo.lastMessage}
                   </p>
-                  <span
-                    className={cn(
-                      "inline-block text-[10px] font-medium px-1.5 py-0.5 rounded mt-1 border",
-                      classificationBadge[convo.classification] || classificationBadge.UNCLASSIFIED
-                    )}
-                  >
-                    {convo.classification}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wider",
+                        classificationBadge[convo.classification] || classificationBadge.UNCLASSIFIED
+                      )}
+                    >
+                      {convo.classification}
+                    </span>
+                  </div>
                 </div>
               </button>
             ))

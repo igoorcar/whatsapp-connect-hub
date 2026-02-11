@@ -34,8 +34,10 @@ export function MessageBubble({
     <div className={cn("flex mb-2 animate-fade-in", isSent ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[65%] rounded-lg shadow-sm relative",
-          isSent ? "bg-wa-sent-bubble" : "bg-card"
+          "max-w-[75%] shadow-sm relative transition-all hover:shadow-md",
+          isSent 
+            ? "bg-wa-sent-bubble rounded-2xl rounded-tr-none ml-12" 
+            : "bg-card rounded-2xl rounded-tl-none mr-12"
         )}
       >
         {mediaUrl && mediaType === "image" && (
@@ -49,8 +51,8 @@ export function MessageBubble({
         )}
 
         {content && (
-          <div className="px-3 py-2">
-            <p className="text-sm text-foreground whitespace-pre-wrap break-words">{content}</p>
+          <div className="px-4 py-2.5">
+            <p className="text-[14px] leading-relaxed text-foreground whitespace-pre-wrap break-words">{content}</p>
           </div>
         )}
 

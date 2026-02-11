@@ -58,6 +58,7 @@ export default function Templates() {
   const [headerText, setHeaderText] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [footerText, setFooterText] = useState("");
+  const [buttons, setButtons] = useState<{ type: string; text: string; url?: string; phone_number?: string }[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -109,8 +110,20 @@ export default function Templates() {
         components.push({ type: "FOOTER", text: footerText });
       }
 
+      if (buttons.length > 0) {
+        components.push({
+          type: "BUTTONS",
+          buttons: buttons.map(b => ({
+            type: b.type,
+            text: b.text,
+            ...(b.type === "URL" ? { url: b.url } : {}),
+            ...(b.type === "PHONE_NUMBER" ? { phone_number: b.phone_number } : {})
+          }))
+        });
+      }
+
       await api.createTemplate({
-        account_id: selectedAccount,
+        wa_account_id: selectedAccount,
         name: templateName,
         category,
         language,
@@ -312,6 +325,81 @@ export default function Templates() {
                   placeholder="Texto do footer"
                 />
               </div>
+              
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Botões (opcional)</Label>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    type="button"
+                    onClick={() => setButtons([...buttons, { type: "QUICK_REPLY", text: "" }])}
+                    disabled={buttons.length >= 3}
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add Botão
+                  </Button>
+                </div>
+                {buttons.map((btn, idx) => (
+                  <div key={idx} className="flex gap-2 items-start">
+                    <Select 
+                      value={btn.type} 
+                      onValueChange={(val) => {
+                        const newBtns = [...buttons];
+                        newBtns[idx].type = val;
+                        setButtons(newBtns);
+                      }}
+                    >
+                      <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="QUICK_REPLY">Resposta Rápida</SelectItem>
+                        <SelectItem value="URL">Link (URL)</SelectItem>
+                        <SelectItem value="PHONE_NUMBER">Telefone</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <div className="flex-1 space-y-2">
+                      <Input 
+                        placeholder="Texto do botão" 
+                        value={btn.text}
+                        onChange={(e) => {
+                          const newBtns = [...buttons];
+                          newBtns[idx].text = e.target.value;
+                          setButtons(newBtns);
+                        }}
+                      />
+                      {btn.type === "URL" && (
+                        <Input 
+                          placeholder="https://exemplo.com" 
+                          value={btn.url || ""}
+                          onChange={(e) => {
+                            const newBtns = [...buttons];
+                            newBtns[idx].url = e.target.value;
+                            setButtons(newBtns);
+                          }}
+                        />
+                      )}
+                      {btn.type === "PHONE_NUMBER" && (
+                        <Input 
+                          placeholder="+5511999999999" 
+                          value={btn.phone_number || ""}
+                          onChange={(e) => {
+                            const newBtns = [...buttons];
+                            newBtns[idx].phone_number = e.target.value;
+                            setButtons(newBtns);
+                          }}
+                        />
+                      )}
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => setButtons(buttons.filter((_, i) => i !== idx))}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
               <Button onClick={handleCreateTemplate} disabled={submitting} className="w-full gap-2">
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
                 Enviar para Aprovação
@@ -347,6 +435,15 @@ export default function Templates() {
                         {footerText && (
                           <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t border-border/30">
                             {footerText}
+                          </div>
+                        )}
+                        {buttons.length > 0 && (
+                          <div className="border-t border-border/30 divide-y divide-border/30">
+                            {buttons.map((btn, i) => (
+                              <div key={i} className="py-2 text-center text-wa-blue text-xs font-medium">
+                                {btn.text || "Botão"}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
