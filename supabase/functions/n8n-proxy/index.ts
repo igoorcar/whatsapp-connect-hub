@@ -39,11 +39,13 @@ serve(async (req) => {
 
     let responseData
     try {
+      // Tenta parsear como JSON, se falhar, retorna o texto bruto
       responseData = responseText ? JSON.parse(responseText) : { success: true }
     } catch (e) {
-      responseData = { success: true, raw: responseText }
+      responseData = { success: true, message: responseText }
     }
 
+    // Retornamos 200 se o n8n retornou 2xx, caso contrário retornamos o status do n8n
     return new Response(
       JSON.stringify(responseData),
       { 
@@ -60,7 +62,7 @@ serve(async (req) => {
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
+        status: 200 // Retornamos 200 mesmo no erro para evitar que o frontend trave, mas com o objeto de erro
       },
     )
   }

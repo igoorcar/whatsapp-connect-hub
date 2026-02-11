@@ -124,6 +124,13 @@ export default function Inbox() {
           if (selectedId) loadTimeline(selectedId);
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "message_logs", filter: `tenant_id=eq.${TENANT_ID}` },
+        () => {
+          if (selectedId) loadTimeline(selectedId);
+        }
+      )
       .subscribe();
 
     return () => {
@@ -243,9 +250,11 @@ export default function Inbox() {
     if (!messageText.trim() || !selectedId || sending) return;
 
     setSending(true);
+    const currentText = messageText;
+    setMessageText(""); // Clear input immediately for better UX
+
     try {
       // Get first active WhatsApp account
-      // We check for both 'CONNECTED' and 'connected' to be safe
       const { data: accounts } = await supabase
         .from("whatsapp_accounts")
         .select("id, account_status")
@@ -258,29 +267,44 @@ export default function Inbox() {
 
       if (!activeAccount) {
         toast.error("Nenhuma conta WhatsApp encontrada.");
+        setMessageText(currentText);
         return;
       }
 
       const accountId = activeAccount.id;
       const phone = contact?.phone || selectedId;
 
-      // Call API
-      await api.sendTextMessage(phone, messageText, accountId);
+      // 1. Salvar a mensagem no banco de dados para persistência
+      const { data: logData, error: logError } = await supabase
+        .from("message_logs")
+        .insert({
+          tenant_id: TENANT_ID,
+          wa_account_id: accountId,
+          contact_id: contact?.id || null,
+          to_phone: phone,
+          text_content: currentText,
+          status: 'sent',
+          sent_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-      // Optimistic update
-      const newMessage: TimelineMsg = {
-        id: Math.random().toString(36).substr(2, 9),
-        type: "sent",
-        content: messageText,
-        timestamp: new Date().toISOString(),
-        status: "sent",
-      };
-      setTimeline((prev) => [...prev, newMessage]);
-      setMessageText("");
+      if (logError) {
+        console.error("Error logging message:", logError);
+      }
+
+      // 2. Chamar a API para enviar via WhatsApp
+      await api.sendTextMessage(phone, currentText, accountId);
+
       toast.success("Mensagem enviada");
+      
+      // Recarregar timeline para garantir sincronia
+      if (selectedId) loadTimeline(selectedId);
+      
     } catch (err) {
       console.error("Send message error:", err);
       toast.error("Erro ao enviar mensagem");
+      setMessageText(currentText); // Restore text on error
     } finally {
       setSending(false);
     }
@@ -309,193 +333,186 @@ export default function Inbox() {
 
         {/* Classification Filters */}
         <div className="flex gap-1.5 p-3 border-b border-border overflow-x-auto">
-          {["Todos", "INTERESSADO", "NAO_INTERESSADO", "UNCLASSIFIED"].map((f) => {
-            const isActive = f === "Todos" ? !classFilter : classFilter === f;
-            return (
-              <button
-                key={f}
-                onClick={() => setClassFilter(f === "Todos" ? null : f)}
-                className={cn(
-                  "px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors border",
-                  isActive
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-card text-muted-foreground border-border hover:bg-muted"
-                )}
-              >
-                {f === "NAO_INTERESSADO" ? "Não Int." : f === "Todos" ? "Todos" : f.charAt(0) + f.slice(1).toLowerCase()}
-              </button>
-            );
-          })}
+          {["Todos", "INTERESSADO", "NAO_INTERESSADO", "UNCLASSIFIED"].map((f) => (
+            <Button
+              key={f}
+              variant={classFilter === (f === "Todos" ? null : f) ? "default" : "outline"}
+              size="sm"
+              onClick={() => setClassFilter(f === "Todos" ? null : f)}
+              className="text-[10px] h-7 px-2.5 rounded-full whitespace-nowrap"
+            >
+              {f}
+            </Button>
+          ))}
         </div>
 
-        {/* Conversations List */}
+        {/* List */}
         <ScrollArea className="flex-1">
           {loading ? (
-            <div className="p-4 space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="animate-pulse flex gap-3 p-3">
-                  <div className="w-10 h-10 rounded-full bg-muted" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-muted rounded w-2/3" />
-                    <div className="h-3 bg-muted rounded w-full" />
+            <div className="p-4 space-y-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex gap-3 animate-pulse">
+                  <div className="w-12 h-12 rounded-full bg-muted" />
+                  <div className="flex-1 space-y-2 py-1">
+                    <div className="h-3 bg-muted rounded w-1/2" />
+                    <div className="h-3 bg-muted rounded w-3/4" />
                   </div>
                 </div>
               ))}
             </div>
           ) : filteredConvos.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-40" />
-              <p className="text-sm">Nenhuma conversa encontrada</p>
+            <div className="p-8 text-center">
+              <MessageSquare className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-20" />
+              <p className="text-sm text-muted-foreground">Nenhuma conversa encontrada</p>
             </div>
           ) : (
-            filteredConvos.map((convo) => (
-              <button
-                key={convo.contactId}
-                onClick={() => selectConversation(convo)}
-                className={cn(
-                  "w-full flex items-start gap-3 px-4 py-3 hover:bg-muted/50 transition-colors text-left border-b border-border/50",
-                  selectedId === convo.contactId && "bg-accent"
-                )}
-              >
-                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-                  <User className="w-5 h-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground truncate">
-                      {convo.contactName}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground shrink-0">
-                      {format(new Date(convo.lastTimestamp), "HH:mm")}
-                    </span>
+            <div className="divide-y divide-border/50">
+              {filteredConvos.map((convo) => (
+                <button
+                  key={convo.contactId}
+                  onClick={() => selectConversation(convo)}
+                  className={cn(
+                    "w-full flex gap-3 p-3 text-left hover:bg-muted/50 transition-colors relative",
+                    selectedId === convo.contactId && "bg-muted"
+                  )}
+                >
+                  <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center shrink-0">
+                    <User className="w-6 h-6 text-muted-foreground" />
                   </div>
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">
-                    {convo.lastMessage}
-                  </p>
-                  <span
-                    className={cn(
-                      "inline-block text-[10px] font-medium px-1.5 py-0.5 rounded mt-1 border",
-                      classificationBadge[convo.classification] || classificationBadge.UNCLASSIFIED
-                    )}
-                  >
-                    {convo.classification}
-                  </span>
-                </div>
-              </button>
-            ))
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start mb-0.5">
+                      <span className="font-semibold text-sm text-foreground truncate">
+                        {convo.contactName}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-2">
+                        {format(new Date(convo.lastTimestamp), "HH:mm")}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate line-clamp-1">
+                      {convo.lastMessage}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <Badge className={cn("text-[9px] px-1.5 h-4 font-normal", classificationBadge[convo.classification])}>
+                        {convo.classification}
+                      </Badge>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
           )}
         </ScrollArea>
       </div>
 
-      {/* Chat Area */}
-      {selectedId && selectedConvo ? (
-        <div className="flex-1 flex flex-col">
-          {/* Chat Header */}
-          <div className="bg-card border-b border-border px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                <User className="w-5 h-5 text-muted-foreground" />
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col bg-wa-chat relative">
+        {selectedId ? (
+          <>
+            {/* Chat Header */}
+            <div className="h-16 border-b border-border bg-card flex items-center justify-between px-4 shrink-0 z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                  <User className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {contact?.name || selectedConvo?.contactName || "Sem nome"}
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    {contact?.phone || selectedConvo?.contactPhone}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">{selectedConvo.contactName}</h3>
-                <p className="text-xs text-muted-foreground">{selectedConvo.contactPhone}</p>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" className="text-muted-foreground">
+                  <Phone className="w-4 h-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={cn("text-muted-foreground", showDetails && "bg-muted text-foreground")}
+                  onClick={() => setShowDetails(!showDetails)}
+                >
+                  <Info className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="text-muted-foreground">
+                  <MoreVertical className="w-4 h-4" />
+                </Button>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <Phone className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-muted-foreground"
-                onClick={() => setShowDetails(!showDetails)}
-              >
-                <Info className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <MoreVertical className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
 
-          {/* Messages */}
-          <div className="flex-1 wa-chat-bg overflow-y-auto custom-scrollbar px-6 py-4">
-            {timelineLoading ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full" />
-              </div>
-            ) : timeline.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                Nenhuma mensagem nesta conversa
-              </div>
-            ) : (
-              <>
-                {timeline.map((msg) => (
-                  <MessageBubble
-                    key={msg.id}
-                    type={msg.type}
-                    content={msg.content}
-                    timestamp={msg.timestamp}
-                    status={msg.status}
-                    classification={msg.classification}
-                    mediaUrl={msg.mediaUrl}
-                  />
-                ))}
+            {/* Messages Area */}
+            <ScrollArea className="flex-1 p-4 md:p-6">
+              <div className="max-w-3xl mx-auto space-y-4">
+                {timelineLoading && timeline.length === 0 ? (
+                  <div className="flex justify-center py-10">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                  </div>
+                ) : (
+                  timeline.map((msg) => (
+                    <MessageBubble
+                      key={msg.id}
+                      content={msg.content}
+                      type={msg.type}
+                      timestamp={msg.timestamp}
+                      status={msg.status}
+                      mediaUrl={msg.mediaUrl}
+                    />
+                  ))
+                )}
                 <div ref={chatEndRef} />
-              </>
-            )}
-          </div>
-
-          {/* Input Area */}
-          <div className="bg-card border-t border-border px-4 py-3">
-            <div className="flex items-end gap-2">
-              <Button variant="ghost" size="icon" className="text-muted-foreground shrink-0">
-                <Smile className="w-5 h-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="text-muted-foreground shrink-0">
-                <Paperclip className="w-5 h-5" />
-              </Button>
-              <div className="flex-1">
-                <textarea
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  placeholder="Digite uma mensagem..."
-                  rows={1}
-                  disabled={sending}
-                  className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }
-                  }}
-                />
               </div>
-              <Button 
-                size="icon" 
-                onClick={handleSendMessage}
-                disabled={sending || !messageText.trim()}
-                className="bg-primary text-primary-foreground hover:bg-secondary shrink-0"
-              >
-                <SendHorizontal className="w-5 h-5" />
-              </Button>
+            </ScrollArea>
+
+            {/* Input Area */}
+            <div className="p-4 bg-card border-t border-border shrink-0">
+              <div className="max-w-3xl mx-auto flex items-end gap-2">
+                <div className="flex gap-1 mb-1">
+                  <Button variant="ghost" size="icon" className="text-muted-foreground h-9 w-9">
+                    <Smile className="w-5 h-5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="text-muted-foreground h-9 w-9">
+                    <Paperclip className="w-5 h-5" />
+                  </Button>
+                </div>
+                <div className="flex-1 relative">
+                  <textarea
+                    rows={1}
+                    placeholder="Digite uma mensagem..."
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    className="w-full bg-muted/50 border-none rounded-xl py-2.5 px-4 text-sm focus:ring-1 focus:ring-primary resize-none max-h-32 outline-none transition-all"
+                  />
+                </div>
+                <Button 
+                  size="icon" 
+                  className="h-10 w-10 rounded-full shrink-0"
+                  disabled={!messageText.trim() || sending}
+                  onClick={handleSendMessage}
+                >
+                  <SendHorizontal className="w-5 h-5" />
+                </Button>
+              </div>
             </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 flex items-center justify-center bg-muted/30">
-          <div className="text-center">
-            <div className="w-20 h-20 rounded-full bg-accent mx-auto flex items-center justify-center mb-4">
-              <MessageSquare className="w-10 h-10 text-primary" />
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+            <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center mb-4">
+              <MessageSquare className="w-10 h-10 text-muted-foreground opacity-20" />
             </div>
-            <h3 className="text-lg font-semibold text-foreground">ZapFlow Inbox</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Selecione uma conversa para começar
+            <h3 className="text-lg font-semibold text-foreground">Suas Mensagens</h3>
+            <p className="text-sm text-muted-foreground max-w-xs mt-1">
+              Selecione uma conversa na lista ao lado para visualizar o histórico e enviar mensagens.
             </p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Details Sidebar */}
       {showDetails && selectedId && (
