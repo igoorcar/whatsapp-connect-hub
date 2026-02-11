@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -139,6 +140,7 @@ export default function Campaigns() {
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Criar Nova Campanha - Passo {step}/3</DialogTitle>
+              <DialogDescription>Siga os passos para configurar e iniciar seu disparo em massa.</DialogDescription>
             </DialogHeader>
             
             <div className="py-4 space-y-4">

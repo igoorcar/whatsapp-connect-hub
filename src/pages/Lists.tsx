@@ -14,8 +14,18 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
-import { Plus, Users, Upload, Loader2 } from "lucide-react";
+import { Plus, Users, Upload, Loader2, Search, Edit2, Trash2, UserPlus } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface ContactList {
   id: string;
@@ -33,6 +43,16 @@ export default function Lists() {
   const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Contacts management
+  const [selectedList, setSelectedList] = useState<ContactList | null>(null);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [showContacts, setShowContacts] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [newContactPhone, setNewContactPhone] = useState("");
+  const [newContactName, setNewContactName] = useState("");
+  const [addingContact, setAddingContact] = useState(false);
 
   // Form state
   const [name, setName] = useState("");
@@ -77,6 +97,70 @@ export default function Lists() {
     }
   }
 
+  async function fetchContacts(listId: string) {
+    setContactsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq("tenant_id", TENANT_ID)
+        .eq("list_id", listId)
+        .order("name", { ascending: true });
+      
+      if (error) throw error;
+      setContacts(data || []);
+    } catch (err) {
+      console.error("Fetch contacts error:", err);
+      toast.error("Erro ao carregar contatos");
+    } finally {
+      setContactsLoading(false);
+    }
+  }
+
+  async function handleAddContact() {
+    if (!newContactPhone || !selectedList) return;
+    setAddingContact(true);
+    try {
+      const phone = newContactPhone.replace(/\D/g, "");
+      const { error } = await supabase.from("contacts").upsert({
+        phone,
+        name: newContactName || null,
+        tenant_id: TENANT_ID,
+        list_id: selectedList.id
+      }, { onConflict: "phone,tenant_id" });
+
+      if (error) throw error;
+      toast.success("Contato adicionado");
+      setNewContactPhone("");
+      setNewContactName("");
+      setShowAddContact(false);
+      fetchContacts(selectedList.id);
+      fetchLists();
+    } catch (err) {
+      console.error("Add contact error:", err);
+      toast.error("Erro ao adicionar contato");
+    } finally {
+      setAddingContact(false);
+    }
+  }
+
+  async function handleDeleteContact(contactId: string) {
+    try {
+      const { error } = await supabase
+        .from("contacts")
+        .delete()
+        .eq("id", contactId);
+      
+      if (error) throw error;
+      toast.success("Contato removido");
+      if (selectedList) fetchContacts(selectedList.id);
+      fetchLists();
+    } catch (err) {
+      console.error("Delete contact error:", err);
+      toast.error("Erro ao remover contato");
+    }
+  }
+
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -87,13 +171,12 @@ export default function Lists() {
       try {
         const csv = event.target?.result as string;
         const lines = csv.split("\n");
-        const contacts = [];
+        const contactsToImport = [];
         
-        // Simple CSV parse (phone, name)
         for (let i = 1; i < lines.length; i++) {
           const [phone, contactName] = lines[i].split(",");
           if (phone && phone.trim()) {
-            contacts.push({
+            contactsToImport.push({
               phone: phone.trim().replace(/\D/g, ""),
               name: contactName?.trim() || null,
               tenant_id: TENANT_ID,
@@ -101,10 +184,11 @@ export default function Lists() {
           }
         }
 
-        if (contacts.length > 0) {
-          const { error } = await supabase.from("contacts").upsert(contacts, { onConflict: "phone,tenant_id" });
+        if (contactsToImport.length > 0) {
+          const { error } = await supabase.from("contacts").upsert(contactsToImport, { onConflict: "phone,tenant_id" });
           if (error) throw error;
-          toast.success(`${contacts.length} contatos importados/atualizados`);
+          toast.success(`${contactsToImport.length} contatos importados/atualizados`);
+          fetchLists();
         }
       } catch (err) {
         console.error("Import error:", err);
@@ -193,10 +277,18 @@ export default function Lists() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {lists.map((list) => (
-            <Card key={list.id} className="hover:shadow-md transition-shadow cursor-pointer">
+            <Card 
+              key={list.id} 
+              className="hover:shadow-md transition-shadow cursor-pointer group"
+              onClick={() => {
+                setSelectedList(list);
+                setShowContacts(true);
+                fetchContacts(list.id);
+              }}
+            >
               <CardContent className="p-5">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center group-hover:bg-primary/10 transition-colors">
                     <Users className="w-5 h-5 text-primary" />
                   </div>
                   <div className="flex-1">
@@ -219,6 +311,87 @@ export default function Lists() {
           ))}
         </div>
       )}
+
+      {/* Contacts View Dialog */}
+      <Dialog open={showContacts} onOpenChange={setShowContacts}>
+        <DialogContent className="sm:max-w-[700px] max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{selectedList?.name}</DialogTitle>
+            <DialogDescription>Visualizando contatos desta lista</DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex items-center justify-between gap-4 py-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input className="pl-9" placeholder="Buscar contato..." />
+            </div>
+            <Button className="gap-2" onClick={() => setShowAddContact(true)}>
+              <UserPlus className="w-4 h-4" />
+              Adicionar
+            </Button>
+          </div>
+
+          <ScrollArea className="flex-1 border rounded-md">
+            {contactsLoading ? (
+              <div className="p-8 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-muted-foreground" /></div>
+            ) : contacts.length === 0 ? (
+              <div className="p-12 text-center text-muted-foreground">Nenhum contato nesta lista</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Telefone</TableHead>
+                    <TableHead className="w-[100px]">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {contacts.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-medium">{c.name || "Sem nome"}</TableCell>
+                      <TableCell>{c.phone}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => handleDeleteContact(c.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Contact Dialog */}
+      <Dialog open={showAddContact} onOpenChange={setShowAddContact}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Adicionar Contato</DialogTitle>
+            <DialogDescription>Insira os dados do novo contato para esta lista</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Telefone (com DDD)</Label>
+              <Input value={newContactPhone} onChange={(e) => setNewContactPhone(e.target.value)} placeholder="Ex: 11999999999" />
+            </div>
+            <div className="space-y-2">
+              <Label>Nome (opcional)</Label>
+              <Input value={newContactName} onChange={(e) => setNewContactName(e.target.value)} placeholder="Ex: João Silva" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddContact(false)}>Cancelar</Button>
+            <Button onClick={handleAddContact} disabled={addingContact || !newContactPhone}>
+              {addingContact && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Adicionar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
