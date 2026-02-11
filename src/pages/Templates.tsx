@@ -284,9 +284,9 @@ export default function Templates() {
           <DialogHeader>
             <DialogTitle>Criar Novo Template</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4 pb-6">
             {/* Form */}
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
                 <Label>Conta WhatsApp</Label>
                 <Select value={selectedAccount} onValueChange={setSelectedAccount}>
@@ -373,10 +373,16 @@ export default function Templates() {
                   placeholder="Texto do footer"
                 />
               </div>
-              <Button onClick={handleCreateTemplate} disabled={submitting} className="w-full gap-2">
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
-                Enviar para Aprovação
-              </Button>
+              <div className="pt-4 border-t border-border mt-6">
+                <Button 
+                  onClick={handleCreateTemplate} 
+                  disabled={submitting} 
+                  className="w-full gap-2 h-12 bg-wa-teal hover:bg-wa-teal/90 text-white font-bold shadow-lg"
+                >
+                  {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <SendIcon className="w-5 h-5" />}
+                  ENVIAR PARA APROVAÇÃO
+                </Button>
+              </div>
             </div>
 
             {/* iPhone Preview */}
