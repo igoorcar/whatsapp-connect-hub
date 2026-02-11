@@ -14,6 +14,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
@@ -143,14 +144,32 @@ export default function Templates() {
       }
 
       if (buttons.length > 0) {
+        // Normaliza os botões para o formato esperado pela API do WhatsApp
+        // URL e PHONE_NUMBER são tipos de botões CALL_TO_ACTION
+        const formattedButtons = buttons.map(b => {
+          if (b.type === "URL") {
+            return {
+              type: "URL",
+              text: b.text,
+              url: b.url
+            };
+          }
+          if (b.type === "PHONE_NUMBER") {
+            return {
+              type: "PHONE_NUMBER",
+              text: b.text,
+              phone_number: b.phone_number
+            };
+          }
+          return {
+            type: "QUICK_REPLY",
+            text: b.text
+          };
+        });
+
         components.push({
           type: "BUTTONS",
-          buttons: buttons.map(b => ({
-            type: b.type,
-            text: b.text,
-            ...(b.type === "URL" ? { url: b.url } : {}),
-            ...(b.type === "PHONE_NUMBER" ? { phone_number: b.phone_number } : {})
-          }))
+          buttons: formattedButtons
         });
       }
 
@@ -172,9 +191,18 @@ export default function Templates() {
       setHeaderText("");
       setFooterText("");
       setButtons([]);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Create template error:", err);
-      toast.error("Erro ao criar template");
+      let errorMessage = "Erro ao criar template";
+      
+      // Tenta extrair mensagem de erro detalhada se disponível
+      if (err.context && err.context.json && err.context.json.error) {
+        errorMessage = `Erro: ${err.context.json.error}`;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -297,6 +325,9 @@ export default function Templates() {
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Criar Novo Template</DialogTitle>
+            <DialogDescription>
+              Preencha as informações abaixo para criar um novo template de mensagem para o WhatsApp.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4 pb-6">
             {/* Form */}

@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -178,6 +179,9 @@ export default function Lists() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Criar Nova Lista</DialogTitle>
+                <DialogDescription>
+                  Dê um nome e uma descrição para a sua nova lista de contatos.
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">

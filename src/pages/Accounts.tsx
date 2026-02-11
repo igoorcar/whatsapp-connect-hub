@@ -14,6 +14,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -128,6 +129,9 @@ export default function Accounts() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Configurar Nova Conta</DialogTitle>
+              <DialogDescription>
+                Insira as credenciais da sua conta do WhatsApp Business para começar.
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">

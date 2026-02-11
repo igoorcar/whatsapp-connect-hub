@@ -45,12 +45,12 @@ serve(async (req) => {
       responseData = { success: true, message: responseText }
     }
 
-    // Retornamos 200 se o n8n retornou 2xx, caso contrário retornamos o status do n8n
+    // Retornamos o status original do n8n para que o frontend possa tratar erros 400, 500, etc.
     return new Response(
       JSON.stringify(responseData),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: response.ok ? 200 : response.status 
+        status: response.status 
       },
     )
   } catch (error) {
@@ -62,7 +62,7 @@ serve(async (req) => {
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 // Retornamos 200 mesmo no erro para evitar que o frontend trave, mas com o objeto de erro
+        status: 400 // Retornamos 400 em caso de erro interno no proxy (ex: JSON inválido)
       },
     )
   }

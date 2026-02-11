@@ -14,6 +14,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -175,6 +176,9 @@ export default function Campaigns() {
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Criar Nova Campanha - Passo {step}/3</DialogTitle>
+              <DialogDescription>
+                Siga os passos para configurar e iniciar sua nova campanha de mensagens.
+              </DialogDescription>
             </DialogHeader>
             
             <div className="py-4 space-y-4">
