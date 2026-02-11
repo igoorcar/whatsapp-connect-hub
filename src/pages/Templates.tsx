@@ -124,6 +124,7 @@ export default function Templates() {
 
       await api.createTemplate({
         wa_account_id: selectedAccount,
+        account_id: selectedAccount,
         name: templateName,
         category,
         language,

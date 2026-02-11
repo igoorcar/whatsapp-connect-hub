@@ -16,7 +16,7 @@ export const api = {
     callN8N('/webhook/validate-credentials', credentials),
   
   syncTemplates: (accountId: string) => 
-    callN8N('/webhook/sync-templates', { wa_account_id: accountId }),
+    callN8N('/webhook/sync-templates', { wa_account_id: accountId, account_id: accountId }),
 
   // Templates
   createTemplate: (templateData: any) => 
@@ -24,10 +24,10 @@ export const api = {
 
   // Messages
   sendTextMessage: (to: string, text: string, accountId: string) => 
-    callN8N('/webhook/send-text-message', { to, text, wa_account_id: accountId }),
+    callN8N('/webhook/send-text-message', { to, text, wa_account_id: accountId, account_id: accountId }),
 
   sendTemplate: (to: string, templateName: string, language: string, components: any[], accountId: string) => 
-    callN8N('/webhook/send-template', { to, templateName, language, components, wa_account_id: accountId }),
+    callN8N('/webhook/send-template', { to, templateName, language, components, wa_account_id: accountId, account_id: accountId }),
 
   // Campaigns
   massDispatch: (campaignData: any) => 
