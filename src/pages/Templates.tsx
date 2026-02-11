@@ -210,66 +210,70 @@ export default function Templates() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {templates.map((template) => (
-            <Card key={template.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-sm font-semibold">{template.name}</CardTitle>
-                    <Badge className={cn("text-[10px] mt-1", statusColor[template.status] || statusColor.PENDING)}>
+            <div key={template.id} className="bg-card text-card-foreground rounded-lg border border-border shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+              {/* Header do Card com Botões Forçados */}
+              <div className="p-4 border-b border-border flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-bold text-foreground truncate" title={template.name}>
+                    {template.name}
+                  </h3>
+                  <div className="mt-1">
+                    <span className={cn(
+                      "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium",
+                      statusColor[template.status] || statusColor.PENDING
+                    )}>
                       {template.status}
-                    </Badge>
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10"
-                      title="Visualizar"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleDeleteTemplate(template.id);
-                      }}
-                      title="Excluir"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-xs text-muted-foreground">
-                  <div className="flex justify-between">
-                    <span>Categoria</span>
-                    <span className="text-foreground">{template.category}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Idioma</span>
-                    <span className="text-foreground">{template.language}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Criado</span>
-                    <span className="text-foreground">
-                      {new Date(template.created_at).toLocaleDateString("pt-BR")}
                     </span>
                   </div>
                 </div>
+                
+                {/* ÁREA DE BOTÕES - FORÇADA COM FLEX-SHRINK-0 */}
+                <div className="flex items-center gap-1 flex-shrink-0" style={{ minWidth: '72px' }}>
+                  <button 
+                    onClick={() => toast.info(`Visualizando: ${template.name}`)}
+                    className="p-2 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-transparent hover:border-primary/20"
+                    title="Visualizar"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                  <button 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDeleteTemplate(template.id);
+                    }}
+                    className="p-2 rounded-md text-destructive hover:bg-destructive/10 transition-colors border border-transparent hover:border-destructive/20"
+                    title="Excluir"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Conteúdo do Card */}
+              <div className="p-4 space-y-3 flex-1">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px]">
+                  <span className="text-muted-foreground">Categoria:</span>
+                  <span className="text-foreground font-medium text-right">{template.category}</span>
+                  
+                  <span className="text-muted-foreground">Idioma:</span>
+                  <span className="text-foreground font-medium text-right">{template.language}</span>
+                  
+                  <span className="text-muted-foreground">Criado em:</span>
+                  <span className="text-foreground font-medium text-right">
+                    {new Date(template.created_at).toLocaleDateString("pt-BR")}
+                  </span>
+                </div>
+
                 {template.components && (
-                  <div className="mt-3 p-2 bg-muted rounded text-xs text-foreground line-clamp-3">
+                  <div className="mt-2 p-2 bg-muted/50 rounded border border-border/50 text-[11px] text-foreground line-clamp-3 italic">
                     {Array.isArray(template.components)
-                      ? template.components.find((c: any) => c.type === "BODY")?.text || "—"
-                      : "—"}
+                      ? template.components.find((c: any) => c.type === "BODY")?.text || "Sem conteúdo"
+                      : "Sem conteúdo"}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       )}
