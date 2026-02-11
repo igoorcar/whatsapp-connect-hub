@@ -114,37 +114,53 @@ export default function Inbox() {
 
   // Realtime
   useEffect(() => {
+    console.log("Setting up Realtime for TENANT_ID:", TENANT_ID);
+    
     const channel = supabase
-      .channel("inbox-realtime")
+      .channel(`inbox-global-${TENANT_ID}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "replies", filter: `tenant_id=eq.${TENANT_ID}` },
+        { event: "*", schema: "public", table: "replies", filter: `tenant_id=eq.${TENANT_ID}` },
         (payload) => {
-          console.log("New reply received:", payload);
+          console.log("Realtime Reply Event:", payload.event, payload);
           fetchConversations();
-          // Se a mensagem recebida for do contato selecionado, atualiza a timeline
-          if (selectedId && (payload.new.from_phone === selectedId || payload.new.contact_id === selectedId)) {
-            loadTimeline(selectedId);
+          if (selectedId) {
+            const isFromSelected = 
+              payload.new?.from_phone === selectedId || 
+              payload.new?.contact_id === selectedId ||
+              payload.old?.from_phone === selectedId;
+            
+            if (isFromSelected) {
+              console.log("Updating timeline for selected contact");
+              loadTimeline(selectedId);
+            }
           }
         }
       )
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "message_logs", filter: `tenant_id=eq.${TENANT_ID}` },
-        () => {
-          if (selectedId) loadTimeline(selectedId);
+        { event: "*", schema: "public", table: "message_logs", filter: `tenant_id=eq.${TENANT_ID}` },
+        (payload) => {
+          console.log("Realtime Message Event:", payload.event, payload);
+          if (selectedId) {
+            const isToSelected = 
+              payload.new?.phone === selectedId || 
+              payload.new?.contact_id === selectedId ||
+              payload.old?.phone === selectedId;
+              
+            if (isToSelected) {
+              console.log("Updating timeline for selected contact (message_logs)");
+              loadTimeline(selectedId);
+            }
+          }
         }
       )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "message_logs", filter: `tenant_id=eq.${TENANT_ID}` },
-        () => {
-          if (selectedId) loadTimeline(selectedId);
-        }
-      )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Realtime subscription status:", status);
+      });
 
     return () => {
+      console.log("Cleaning up Realtime channel");
       supabase.removeChannel(channel);
     };
   }, [selectedId, fetchConversations]);
@@ -210,20 +226,26 @@ export default function Inbox() {
       // Fetch sent messages
       const sentQuery = isUUID(contactId)
         ? supabase.from("message_logs").select("*").eq("contact_id", contactId)
-        : supabase.from("message_logs").select("*").eq("phone", contactId);
-      const { data: sentMessages } = await sentQuery
+        : supabase.from("message_logs").select("*").or(`phone.eq.${contactId},wa_message_id.ilike.%${contactId}%`);
+      
+      const { data: sentMessages, error: sentError } = await sentQuery
         .eq("tenant_id", TENANT_ID)
         .order("sent_at", { ascending: true })
         .limit(200);
+        
+      if (sentError) console.error("Sent messages fetch error:", sentError);
 
       // Fetch received messages
       const recvQuery = isUUID(contactId)
         ? supabase.from("replies").select("*").eq("contact_id", contactId)
-        : supabase.from("replies").select("*").eq("from_phone", contactId);
-      const { data: receivedMessages } = await recvQuery
+        : supabase.from("replies").select("*").or(`from_phone.eq.${contactId},from_name.ilike.%${contactId}%`);
+        
+      const { data: receivedMessages, error: recvError } = await recvQuery
         .eq("tenant_id", TENANT_ID)
         .order("replied_at", { ascending: true })
         .limit(200);
+        
+      if (recvError) console.error("Received messages fetch error:", recvError);
 
       const tl: TimelineMsg[] = [
         ...(sentMessages || []).map((msg: any) => ({
