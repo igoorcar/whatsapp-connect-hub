@@ -245,19 +245,23 @@ export default function Inbox() {
     setSending(true);
     try {
       // Get first active WhatsApp account
+      // We check for both 'CONNECTED' and 'connected' to be safe
       const { data: accounts } = await supabase
         .from("whatsapp_accounts")
-        .select("id")
+        .select("id, account_status")
         .eq("tenant_id", TENANT_ID)
-        .eq("account_status", "CONNECTED")
-        .limit(1);
+        .limit(10);
 
-      if (!accounts || accounts.length === 0) {
-        toast.error("Nenhuma conta WhatsApp conectada encontrada.");
+      const activeAccount = accounts?.find(acc => 
+        acc.account_status?.toUpperCase() === "CONNECTED"
+      ) || accounts?.[0];
+
+      if (!activeAccount) {
+        toast.error("Nenhuma conta WhatsApp encontrada.");
         return;
       }
 
-      const accountId = accounts[0].id;
+      const accountId = activeAccount.id;
       const phone = contact?.phone || selectedId;
 
       // Call API

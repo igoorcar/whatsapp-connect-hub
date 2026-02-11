@@ -6,25 +6,37 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { endpoint, body } = await req.json()
+    const requestData = await req.json()
+    const { endpoint, body } = requestData
     const N8N_BASE_URL = 'https://n8n-n8n.gycquy.easypanel.host'
     
-    console.log(`Proxying request to N8N: ${endpoint}`)
+    console.log(`[Proxy] Request to: ${endpoint}`)
+    console.log(`[Proxy] Payload:`, JSON.stringify(body))
 
-    const response = await fetch(`${N8N_BASE_URL}${endpoint}`, {
+    if (!endpoint) {
+      throw new Error("Missing endpoint in request body")
+    }
+
+    const targetUrl = `${N8N_BASE_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`
+    
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(body || {}),
     })
 
     const responseText = await response.text()
+    console.log(`[Proxy] N8N Status: ${response.status}`)
+    console.log(`[Proxy] N8N Response: ${responseText}`)
+
     let responseData
     try {
       responseData = responseText ? JSON.parse(responseText) : { success: true }
@@ -36,15 +48,19 @@ serve(async (req) => {
       JSON.stringify(responseData),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: response.status 
+        status: response.ok ? 200 : response.status 
       },
     )
   } catch (error) {
+    console.error(`[Proxy] Error:`, error.message)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: "Check Supabase function logs for more info" 
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400 
+        status: 500 
       },
     )
   }
