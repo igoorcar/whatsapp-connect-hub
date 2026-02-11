@@ -292,16 +292,35 @@ export default function Inbox() {
 
       if (logError) {
         console.error("Error logging message:", logError);
+        toast.error("Erro ao salvar mensagem no banco de dados");
+        setMessageText(currentText);
+        return;
       }
+
+      // Adicionar mensagem imediatamente à timeline para feedback instantâneo
+      const newMessage: TimelineMsg = {
+        id: logData.id,
+        type: "sent",
+        content: currentText,
+        timestamp: logData.sent_at,
+        status: 'sent'
+      };
+      setTimeline(prev => [...prev, newMessage]);
 
       // 2. Chamar a API para enviar via WhatsApp
       // O api.ts agora garante que wa_account_id seja enviado ao n8n
-      await api.sendTextMessage(phone, currentText, accountId);
-
-      toast.success("Mensagem enviada");
+      try {
+        await api.sendTextMessage(phone, currentText, accountId);
+        toast.success("Mensagem enviada");
+      } catch (apiError) {
+        console.error("Error sending via API:", apiError);
+        toast.warning("Mensagem salva, mas houve erro ao enviar via WhatsApp");
+      }
       
-      // Recarregar timeline para garantir sincronia
-      if (selectedId) loadTimeline(selectedId);
+      // Recarregar timeline para garantir sincronia completa com o banco
+      setTimeout(() => {
+        if (selectedId) loadTimeline(selectedId);
+      }, 500);
       
     } catch (err) {
       console.error("Send message error:", err);
