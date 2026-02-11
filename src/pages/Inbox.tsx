@@ -171,15 +171,16 @@ export default function Inbox() {
 
   // Polling inteligente como backup para o Realtime
   useEffect(() => {
-    if (!selectedId) return;
-
-    // Atualiza a timeline a cada 5 segundos para garantir o tempo real
+    // Atualiza a lista de conversas e a timeline a cada 5 segundos
     const interval = setInterval(() => {
-      loadTimeline(selectedId, true);
+      fetchConversations();
+      if (selectedId) {
+        loadTimeline(selectedId, true);
+      }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [selectedId]); // Reinicia o polling quando mudar de conversa
+  }, [selectedId, fetchConversations]);
 
   async function loadTimeline(contactId: string, isPolling = false) {
     if (!isPolling) setTimelineLoading(true);
@@ -330,6 +331,18 @@ export default function Inbox() {
         [selectedId]: [...(prev[selectedId] || []), newMessage]
       }));
       setTimeline(prev => [...prev, newMessage]);
+
+      // Atualizar instantaneamente a última mensagem na lista lateral
+      setConversations(prev => {
+        const updated = prev.map(c => {
+          if (c.contactId === selectedId) {
+            return { ...c, lastMessage: currentText, lastTimestamp: new Date().toISOString() };
+          }
+          return c;
+        });
+        // Reordenar para colocar a conversa atual no topo
+        return updated.sort((a, b) => new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime());
+      });
 
       // 3. Chamar o Webhook do n8n PRIMEIRO (Prioridade: Envio da Mensagem)
       let apiSuccess = false;
