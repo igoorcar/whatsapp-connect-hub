@@ -58,6 +58,7 @@ export default function Templates() {
   const [headerText, setHeaderText] = useState("");
   const [bodyText, setBodyText] = useState("");
   const [footerText, setFooterText] = useState("");
+  const [buttons, setButtons] = useState<{ type: string; text: string; url?: string; phone_number?: string }[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -141,6 +142,18 @@ export default function Templates() {
         components.push({ type: "FOOTER", text: footerText });
       }
 
+      if (buttons.length > 0) {
+        components.push({
+          type: "BUTTONS",
+          buttons: buttons.map(b => ({
+            type: b.type,
+            text: b.text,
+            ...(b.type === "URL" ? { url: b.url } : {}),
+            ...(b.type === "PHONE_NUMBER" ? { phone_number: b.phone_number } : {})
+          }))
+        });
+      }
+
       await api.createTemplate({
         account_id: selectedAccount,
         name: templateName,
@@ -158,6 +171,7 @@ export default function Templates() {
       setBodyText("");
       setHeaderText("");
       setFooterText("");
+      setButtons([]);
     } catch (err) {
       console.error("Create template error:", err);
       toast.error("Erro ao criar template");
@@ -373,6 +387,89 @@ export default function Templates() {
                   placeholder="Texto do footer"
                 />
               </div>
+
+              {/* Seção de Botões */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Botões (Máx 3)</Label>
+                  {buttons.length < 3 && (
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setButtons([...buttons, { type: "QUICK_REPLY", text: "" }])}
+                      className="h-7 text-[10px]"
+                    >
+                      <Plus className="w-3 h-3 mr-1" /> Add Botão
+                    </Button>
+                  )}
+                </div>
+                
+                {buttons.map((btn, idx) => (
+                  <div key={idx} className="p-3 border border-dashed border-border rounded-lg space-y-2 bg-muted/30">
+                    <div className="flex gap-2">
+                      <Select 
+                        value={btn.type} 
+                        onValueChange={(val) => {
+                          const newBtns = [...buttons];
+                          newBtns[idx] = { ...newBtns[idx], type: val };
+                          setButtons(newBtns);
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs w-[140px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="QUICK_REPLY">Resposta Rápida</SelectItem>
+                          <SelectItem value="URL">Link (URL)</SelectItem>
+                          <SelectItem value="PHONE_NUMBER">Telefone</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input 
+                        className="h-8 text-xs"
+                        placeholder="Texto do botão"
+                        value={btn.text}
+                        onChange={(e) => {
+                          const newBtns = [...buttons];
+                          newBtns[idx].text = e.target.value;
+                          setButtons(newBtns);
+                        }}
+                      />
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-destructive"
+                        onClick={() => setButtons(buttons.filter((_, i) => i !== idx))}
+                      >
+                        <Trash2 className="h-3 h-3" />
+                      </Button>
+                    </div>
+                    {btn.type === "URL" && (
+                      <Input 
+                        className="h-8 text-xs"
+                        placeholder="https://exemplo.com"
+                        value={btn.url || ""}
+                        onChange={(e) => {
+                          const newBtns = [...buttons];
+                          newBtns[idx].url = e.target.value;
+                          setButtons(newBtns);
+                        }}
+                      />
+                    )}
+                    {btn.type === "PHONE_NUMBER" && (
+                      <Input 
+                        className="h-8 text-xs"
+                        placeholder="+5511999999999"
+                        value={btn.phone_number || ""}
+                        onChange={(e) => {
+                          const newBtns = [...buttons];
+                          newBtns[idx].phone_number = e.target.value;
+                          setButtons(newBtns);
+                        }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+
               <div className="pt-4 border-t border-border mt-6">
                 <Button 
                   onClick={handleCreateTemplate} 
@@ -412,8 +509,20 @@ export default function Templates() {
                           {renderPreviewBody(bodyText)}
                         </div>
                         {footerText && (
-                          <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t border-border/30">
-                            {footerText}
+                          <div className="px-3 py-1.5 border-t border-border/50">
+                            <p className="text-[10px] text-muted-foreground">{footerText}</p>
+                          </div>
+                        )}
+                        {/* Preview dos Botões */}
+                        {buttons.length > 0 && (
+                          <div className="border-t border-border/50 flex flex-col divide-y divide-border/50">
+                            {buttons.map((btn, i) => (
+                              <div key={i} className="py-2 text-center text-xs font-medium text-blue-500 flex items-center justify-center gap-1.5">
+                                {btn.type === "URL" && <SendIcon className="w-3 h-3" />}
+                                {btn.type === "PHONE_NUMBER" && <Smartphone className="w-3 h-3" />}
+                                {btn.text || `Botão ${i+1}`}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
