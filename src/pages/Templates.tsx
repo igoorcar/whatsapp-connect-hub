@@ -227,14 +227,14 @@ export default function Templates() {
                   </div>
                 </div>
                 
-                {/* ÁREA DE BOTÕES - FORÇADA COM FLEX-SHRINK-0 */}
-                <div className="flex items-center gap-1 flex-shrink-0" style={{ minWidth: '72px' }}>
+                {/* ÁREA DE BOTÕES - TEXTO E CORES DE ALTO CONTRASTE */}
+                <div className="flex items-center gap-2 flex-shrink-0">
                   <button 
                     onClick={() => toast.info(`Visualizando: ${template.name}`)}
-                    className="p-2 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-transparent hover:border-primary/20"
-                    title="Visualizar"
+                    className="px-2 py-1 rounded bg-blue-600 text-white text-[10px] font-bold hover:bg-blue-700 transition-colors flex items-center gap-1"
                   >
-                    <Eye className="h-4 w-4" />
+                    <Eye className="h-3 w-3" />
+                    VER
                   </button>
                   <button 
                     onClick={(e) => {
@@ -242,10 +242,10 @@ export default function Templates() {
                       e.stopPropagation();
                       handleDeleteTemplate(template.id);
                     }}
-                    className="p-2 rounded-md text-destructive hover:bg-destructive/10 transition-colors border border-transparent hover:border-destructive/20"
-                    title="Excluir"
+                    className="px-2 py-1 rounded bg-red-600 text-white text-[10px] font-bold hover:bg-red-700 transition-colors flex items-center gap-1"
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-3 w-3" />
+                    APAGAR
                   </button>
                 </div>
               </div>
