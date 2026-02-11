@@ -97,18 +97,29 @@ export default function Lists() {
     }
   }
 
-  async function fetchContacts(listId: string) {
+  async function fetchContacts(list: ContactList) {
     setContactsLoading(true);
     try {
+      // Tenta buscar por list_id, se falhar (coluna não existe), busca por tags
       const { data, error } = await supabase
         .from("contacts")
         .select("*")
         .eq("tenant_id", TENANT_ID)
-        .eq("list_id", listId)
+        .or(`list_id.eq.${list.id},tags.cs.{list:${list.id}}`)
         .order("name", { ascending: true });
       
-      if (error) throw error;
-      setContacts(data || []);
+      if (error) {
+        // Fallback manual se a query complexa falhar
+        const { data: fallbackData } = await supabase
+          .from("contacts")
+          .select("*")
+          .eq("tenant_id", TENANT_ID)
+          .contains("tags", [`list:${list.id}`]);
+        
+        setContacts(fallbackData || []);
+      } else {
+        setContacts(data || []);
+      }
     } catch (err) {
       console.error("Fetch contacts error:", err);
       toast.error("Erro ao carregar contatos");
@@ -122,19 +133,45 @@ export default function Lists() {
     setAddingContact(true);
     try {
       const phone = newContactPhone.replace(/\D/g, "");
+      
+      // Busca contato existente para preservar tags
+      const { data: existing } = await supabase
+        .from("contacts")
+        .select("tags")
+        .eq("phone", phone)
+        .eq("tenant_id", TENANT_ID)
+        .maybeSingle();
+
+      const currentTags = existing?.tags || [];
+      const listTag = `list:${selectedList.id}`;
+      const newTags = currentTags.includes(listTag) ? currentTags : [...currentTags, listTag];
+
       const { error } = await supabase.from("contacts").upsert({
         phone,
         name: newContactName || null,
         tenant_id: TENANT_ID,
-        list_id: selectedList.id
+        tags: newTags,
+        // Mantemos o list_id para quando a coluna for criada
+        ...(true ? { list_id: selectedList.id } : {}) 
       }, { onConflict: "phone,tenant_id" });
 
-      if (error) throw error;
+      if (error) {
+        // Se der erro 400 (coluna list_id não existe), tenta sem ela
+        const { error: retryError } = await supabase.from("contacts").upsert({
+          phone,
+          name: newContactName || null,
+          tenant_id: TENANT_ID,
+          tags: newTags
+        }, { onConflict: "phone,tenant_id" });
+        
+        if (retryError) throw retryError;
+      }
+
       toast.success("Contato adicionado");
       setNewContactPhone("");
       setNewContactName("");
       setShowAddContact(false);
-      fetchContacts(selectedList.id);
+      fetchContacts(selectedList);
       fetchLists();
     } catch (err) {
       console.error("Add contact error:", err);
@@ -144,16 +181,30 @@ export default function Lists() {
     }
   }
 
-  async function handleDeleteContact(contactId: string) {
+  async function handleDeleteContact(contact: any) {
+    if (!selectedList) return;
     try {
+      const listTag = `list:${selectedList.id}`;
+      const newTags = (contact.tags || []).filter((t: string) => t !== listTag);
+
       const { error } = await supabase
         .from("contacts")
-        .delete()
-        .eq("id", contactId);
+        .update({ 
+          tags: newTags,
+          list_id: null 
+        })
+        .eq("id", contact.id);
       
-      if (error) throw error;
-      toast.success("Contato removido");
-      if (selectedList) fetchContacts(selectedList.id);
+      if (error) {
+        // Fallback sem list_id
+        await supabase
+          .from("contacts")
+          .update({ tags: newTags })
+          .eq("id", contact.id);
+      }
+
+      toast.success("Contato removido da lista");
+      fetchContacts(selectedList);
       fetchLists();
     } catch (err) {
       console.error("Delete contact error:", err);
@@ -283,7 +334,7 @@ export default function Lists() {
               onClick={() => {
                 setSelectedList(list);
                 setShowContacts(true);
-                fetchContacts(list.id);
+                fetchContacts(list);
               }}
             >
               <CardContent className="p-5">
@@ -352,7 +403,7 @@ export default function Lists() {
                       <TableCell>{c.phone}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => handleDeleteContact(c.id)}>
+                          <Button variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => handleDeleteContact(c)}>
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
