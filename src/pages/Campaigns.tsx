@@ -106,14 +106,24 @@ export default function Campaigns() {
   }
 
   async function fetchMetadata() {
-    const [accRes, tempRes, listRes] = await Promise.all([
-      supabase.from("whatsapp_accounts").select("id, verified_name").eq("tenant_id", TENANT_ID),
-      supabase.from("templates").select("id, name, status").eq("tenant_id", TENANT_ID).eq("status", "APPROVED"),
-      supabase.from("contact_lists").select("id, name").eq("tenant_id", TENANT_ID),
-    ]);
-    setAccounts(accRes.data || []);
-    setTemplates(tempRes.data || []);
-    setLists(listRes.data || []);
+    try {
+      const [accRes, tempRes, listRes] = await Promise.all([
+        supabase.from("whatsapp_accounts").select("id, verified_name").eq("tenant_id", TENANT_ID),
+        supabase.from("templates").select("id, name, status").eq("tenant_id", TENANT_ID).eq("status", "APPROVED"),
+        supabase.from("contact_lists").select("id, name").eq("tenant_id", TENANT_ID),
+      ]);
+      
+      if (accRes.error) console.error("Error fetching accounts:", accRes.error);
+      if (tempRes.error) console.error("Error fetching templates:", tempRes.error);
+      if (listRes.error) console.error("Error fetching lists:", listRes.error);
+
+      setAccounts(accRes.data || []);
+      setTemplates(tempRes.data || []);
+      setLists(listRes.data || []);
+    } catch (err) {
+      console.error("Metadata fetch error:", err);
+      toast.error("Erro ao carregar dados auxiliares");
+    }
   }
 
   async function handleStartCampaign() {
@@ -224,9 +234,17 @@ export default function Campaigns() {
                   <div className="space-y-2">
                     <Label>Lista de Contatos</Label>
                     <Select value={selectedList} onValueChange={setSelectedList}>
-                      <SelectTrigger><SelectValue placeholder="Selecione a lista" /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue placeholder={lists.length === 0 ? "Nenhuma lista encontrada" : "Selecione a lista"} />
+                      </SelectTrigger>
                       <SelectContent>
-                        {lists.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+                        {lists.length === 0 ? (
+                          <div className="p-2 text-xs text-center text-muted-foreground">
+                            Nenhuma lista disponível
+                          </div>
+                        ) : (
+                          lists.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
