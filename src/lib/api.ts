@@ -2,13 +2,20 @@ import { supabase } from "@/integrations/supabase/client";
 import { TENANT_ID } from "./constants";
 
 async function callN8N(endpoint: string, body: any) {
+  // Regra Geral: Se houver account_id, garante que wa_account_id também exista com o mesmo valor
+  // Isso resolve a obrigatoriedade exigida pelo n8n
+  const accountId = body.account_id || body.wa_account_id;
+  
+  const normalizedBody = {
+    ...body,
+    tenant_id: TENANT_ID,
+    ...(accountId ? { wa_account_id: accountId, account_id: accountId } : {})
+  };
+
   const { data, error } = await supabase.functions.invoke('n8n-proxy', {
     body: { 
       endpoint, 
-      body: { 
-        ...body, 
-        tenant_id: TENANT_ID 
-      } 
+      body: normalizedBody
     }
   });
 
@@ -45,11 +52,11 @@ export const api = {
       });
     }
     
-    // Se for um objeto, garantimos que enviamos no formato que o n8n espera
-    // O n8n espera campaign_id na raiz do body
     const payload = {
-      campaign_id: data.campaign_id || data.id, // Suporta objeto de campanha ou objeto com campaign_id
-      throttle_ms: data.throttle_ms || 1000
+      campaign_id: data.campaign_id || data.id,
+      throttle_ms: data.throttle_ms || 1000,
+      // Se a campanha tiver um account_id vinculado, ele será normalizado dentro do callN8N
+      account_id: data.account_id || data.wa_account_id
     };
       
     return callN8N('/webhook/mass-dispatch', payload);

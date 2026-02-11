@@ -275,6 +275,7 @@ export default function Inbox() {
       const phone = contact?.phone || selectedId;
 
       // 1. Salvar a mensagem no banco de dados para persistência
+      // Usando wa_account_id para consistência com o banco
       const { data: logData, error: logError } = await supabase
         .from("message_logs")
         .insert({
@@ -294,6 +295,7 @@ export default function Inbox() {
       }
 
       // 2. Chamar a API para enviar via WhatsApp
+      // O api.ts agora garante que wa_account_id seja enviado ao n8n
       await api.sendTextMessage(phone, currentText, accountId);
 
       toast.success("Mensagem enviada");
