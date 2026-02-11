@@ -5,7 +5,27 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Plus, Send, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus, Send, Clock, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 interface Campaign {
   id: string;
@@ -33,12 +53,28 @@ const statusConfig: Record<string, { label: string; icon: any; color: string }> 
 export default function Campaigns() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [step, setStep] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Form State
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [lists, setLists] = useState<any[]>([]);
+
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState("");
+  const [selectedList, setSelectedList] = useState("");
 
   useEffect(() => {
     fetchCampaigns();
+    fetchMetadata();
   }, []);
 
   async function fetchCampaigns() {
+    setLoading(true);
     const { data } = await supabase
       .from("campaigns")
       .select("*")
@@ -48,6 +84,42 @@ export default function Campaigns() {
     setLoading(false);
   }
 
+  async function fetchMetadata() {
+    const [accRes, tempRes, listRes] = await Promise.all([
+      supabase.from("whatsapp_accounts").select("id, verified_name").eq("tenant_id", TENANT_ID),
+      supabase.from("templates").select("id, name, status").eq("tenant_id", TENANT_ID).eq("status", "APPROVED"),
+      supabase.from("contact_lists").select("id, name").eq("tenant_id", TENANT_ID),
+    ]);
+    setAccounts(accRes.data || []);
+    setTemplates(tempRes.data || []);
+    setLists(listRes.data || []);
+  }
+
+  async function handleStartCampaign() {
+    setSubmitting(true);
+    try {
+      await api.massDispatch({
+        name,
+        description,
+        account_id: selectedAccount,
+        template_id: selectedTemplate,
+        list_id: selectedList,
+      });
+      toast.success("Campanha iniciada com sucesso!");
+      setShowCreate(false);
+      fetchCampaigns();
+      // Reset
+      setName("");
+      setDescription("");
+      setStep(1);
+    } catch (err) {
+      console.error("Start campaign error:", err);
+      toast.error("Erro ao iniciar campanha");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
@@ -55,10 +127,93 @@ export default function Campaigns() {
           <h1 className="text-2xl font-bold text-foreground">Campanhas</h1>
           <p className="text-sm text-muted-foreground mt-1">Disparo em massa via WhatsApp</p>
         </div>
-        <Button className="gap-2">
-          <Plus className="w-4 h-4" />
-          Nova Campanha
-        </Button>
+        
+        <Dialog open={showCreate} onOpenChange={setShowCreate}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="w-4 h-4" />
+              Nova Campanha
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Criar Nova Campanha - Passo {step}/3</DialogTitle>
+            </DialogHeader>
+            
+            <div className="py-4 space-y-4">
+              {step === 1 && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Nome da Campanha</Label>
+                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Promoção de Verão" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Descrição (opcional)</Label>
+                    <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Breve descrição da campanha..." />
+                  </div>
+                </>
+              )}
+
+              {step === 2 && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Conta WhatsApp</Label>
+                    <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+                      <SelectTrigger><SelectValue placeholder="Selecione a conta" /></SelectTrigger>
+                      <SelectContent>
+                        {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.verified_name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Template (Apenas aprovados)</Label>
+                    <Select value={selectedTemplate} onValueChange={setSelectedTemplate}>
+                      <SelectTrigger><SelectValue placeholder="Selecione o template" /></SelectTrigger>
+                      <SelectContent>
+                        {templates.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+
+              {step === 3 && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Lista de Contatos</Label>
+                    <Select value={selectedList} onValueChange={setSelectedList}>
+                      <SelectTrigger><SelectValue placeholder="Selecione a lista" /></SelectTrigger>
+                      <SelectContent>
+                        {lists.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="p-4 bg-muted rounded-lg text-sm space-y-2">
+                    <p><strong>Resumo:</strong></p>
+                    <p>Campanha: {name}</p>
+                    <p>Template: {templates.find(t => t.id === selectedTemplate)?.name}</p>
+                    <p>Lista: {lists.find(l => l.id === selectedList)?.name}</p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <DialogFooter className="flex justify-between sm:justify-between">
+              {step > 1 ? (
+                <Button variant="outline" onClick={() => setStep(step - 1)}>Voltar</Button>
+              ) : <div />}
+              
+              {step < 3 ? (
+                <Button onClick={() => setStep(step + 1)} disabled={step === 1 && !name}>Próximo</Button>
+              ) : (
+                <Button onClick={handleStartCampaign} disabled={submitting || !selectedList}>
+                  {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Iniciar Campanha
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {loading ? (

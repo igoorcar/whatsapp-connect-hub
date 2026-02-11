@@ -1,10 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { TENANT_ID } from "@/lib/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Users, Upload } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Plus, Users, Upload, Loader2 } from "lucide-react";
 
 interface ContactList {
   id: string;
@@ -18,12 +29,21 @@ interface ContactList {
 export default function Lists() {
   const [lists, setLists] = useState<ContactList[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Form state
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
 
   useEffect(() => {
     fetchLists();
   }, []);
 
   async function fetchLists() {
+    setLoading(true);
     const { data } = await supabase
       .from("contact_lists")
       .select("*")
@@ -31,6 +51,70 @@ export default function Lists() {
       .order("created_at", { ascending: false });
     setLists(data || []);
     setLoading(false);
+  }
+
+  async function handleCreateList() {
+    if (!name) return;
+    setCreating(true);
+    try {
+      const { error } = await supabase.from("contact_lists").insert({
+        name,
+        description,
+        tenant_id: TENANT_ID,
+        type: "MANUAL",
+      });
+      if (error) throw error;
+      toast.success("Lista criada com sucesso");
+      setShowCreate(false);
+      setName("");
+      setDescription("");
+      fetchLists();
+    } catch (err) {
+      console.error("Create list error:", err);
+      toast.error("Erro ao criar lista");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const csv = event.target?.result as string;
+        const lines = csv.split("\n");
+        const contacts = [];
+        
+        // Simple CSV parse (phone, name)
+        for (let i = 1; i < lines.length; i++) {
+          const [phone, contactName] = lines[i].split(",");
+          if (phone && phone.trim()) {
+            contacts.push({
+              phone: phone.trim().replace(/\D/g, ""),
+              name: contactName?.trim() || null,
+              tenant_id: TENANT_ID,
+            });
+          }
+        }
+
+        if (contacts.length > 0) {
+          const { error } = await supabase.from("contacts").upsert(contacts, { onConflict: "phone,tenant_id" });
+          if (error) throw error;
+          toast.success(`${contacts.length} contatos importados/atualizados`);
+        }
+      } catch (err) {
+        console.error("Import error:", err);
+        toast.error("Erro ao importar CSV");
+      } finally {
+        setImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsText(file);
   }
 
   return (
@@ -41,14 +125,52 @@ export default function Lists() {
           <p className="text-sm text-muted-foreground mt-1">Organize seus contatos em listas</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2">
-            <Upload className="w-4 h-4" />
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileUpload} 
+            accept=".csv" 
+            className="hidden" 
+          />
+          <Button 
+            variant="outline" 
+            className="gap-2" 
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing}
+          >
+            {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             Importar CSV
           </Button>
-          <Button className="gap-2">
-            <Plus className="w-4 h-4" />
-            Nova Lista
-          </Button>
+          
+          <Dialog open={showCreate} onOpenChange={setShowCreate}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="w-4 h-4" />
+                Nova Lista
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Criar Nova Lista</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nome da Lista</Label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Clientes VIP" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Descrição</Label>
+                  <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Opcional..." />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={handleCreateList} disabled={creating || !name}>
+                  {creating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Criar Lista
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

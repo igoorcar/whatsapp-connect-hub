@@ -4,7 +4,19 @@ import { TENANT_ID } from "@/lib/constants";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Phone,
   Plus,
@@ -12,6 +24,7 @@ import {
   AlertTriangle,
   Signal,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 
 interface Account {
@@ -33,18 +46,68 @@ const qualityColors: Record<string, string> = {
 export default function Accounts() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+
+  // Form state
+  const [wabaId, setWabaId] = useState("");
+  const [phoneId, setPhoneId] = useState("");
+  const [accessToken, setAccessToken] = useState("");
 
   useEffect(() => {
     fetchAccounts();
   }, []);
 
   async function fetchAccounts() {
+    setLoading(true);
     const { data } = await supabase
       .from("whatsapp_accounts")
       .select("id, verified_name, display_phone_number, quality_rating, account_status, messaging_limit_tier, created_at")
       .eq("tenant_id", TENANT_ID);
     setAccounts(data || []);
     setLoading(false);
+  }
+
+  async function handleAddAccount() {
+    if (!wabaId || !phoneId || !accessToken) {
+      toast.error("Preencha todos os campos");
+      return;
+    }
+
+    setValidating(true);
+    try {
+      await api.validateCredentials({
+        waba_id: wabaId,
+        phone_number_id: phoneId,
+        access_token: accessToken,
+      });
+      
+      toast.success("Credenciais validadas e conta adicionada!");
+      setShowAddDialog(false);
+      setWabaId("");
+      setPhoneId("");
+      setAccessToken("");
+      fetchAccounts();
+    } catch (err) {
+      console.error("Add account error:", err);
+      toast.error("Erro ao validar credenciais");
+    } finally {
+      setValidating(false);
+    }
+  }
+
+  async function handleSyncTemplates(accountId: string) {
+    setSyncingId(accountId);
+    try {
+      await api.syncTemplates(accountId);
+      toast.success("Templates sincronizados com sucesso");
+    } catch (err) {
+      console.error("Sync templates error:", err);
+      toast.error("Erro ao sincronizar templates");
+    } finally {
+      setSyncingId(null);
+    }
   }
 
   return (
@@ -54,10 +117,57 @@ export default function Accounts() {
           <h1 className="text-2xl font-bold text-foreground">Contas WhatsApp</h1>
           <p className="text-sm text-muted-foreground mt-1">Gerencie suas contas do WhatsApp Business</p>
         </div>
-        <Button className="gap-2">
-          <Plus className="w-4 h-4" />
-          Adicionar Conta
-        </Button>
+        
+        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="w-4 h-4" />
+              Adicionar Conta
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Configurar Nova Conta</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="wabaId">WhatsApp Business Account ID</Label>
+                <Input 
+                  id="wabaId" 
+                  value={wabaId} 
+                  onChange={(e) => setWabaId(e.target.value)} 
+                  placeholder="Ex: 1092837465"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phoneId">Phone Number ID</Label>
+                <Input 
+                  id="phoneId" 
+                  value={phoneId} 
+                  onChange={(e) => setPhoneId(e.target.value)} 
+                  placeholder="Ex: 987654321"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="token">System User Access Token</Label>
+                <Input 
+                  id="token" 
+                  type="password"
+                  value={accessToken} 
+                  onChange={(e) => setAccessToken(e.target.value)} 
+                  placeholder="EAAB..."
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancelar</Button>
+              <Button onClick={handleAddAccount} disabled={validating}>
+                {validating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Validar e Salvar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {loading ? (
@@ -120,8 +230,18 @@ export default function Accounts() {
                     <span className="text-foreground">{account.messaging_limit_tier || "—"}</span>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" className="w-full mt-4 gap-2">
-                  <RefreshCw className="w-3.5 h-3.5" />
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full mt-4 gap-2"
+                  disabled={syncingId === account.id}
+                  onClick={() => handleSyncTemplates(account.id)}
+                >
+                  {syncingId === account.id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
                   Sincronizar Templates
                 </Button>
               </CardContent>

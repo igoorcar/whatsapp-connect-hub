@@ -4,10 +4,11 @@ import { TENANT_ID, isUUID } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { MessageBubble } from "@/components/MessageBubble";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 import {
   Search,
   SendHorizontal,
@@ -69,6 +70,7 @@ export default function Inbox() {
   const [messageText, setMessageText] = useState("");
   const [loading, setLoading] = useState(true);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [sending, setSending] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const fetchConversations = useCallback(async () => {
@@ -235,6 +237,49 @@ export default function Inbox() {
   function selectConversation(convo: Conversation) {
     setSelectedId(convo.contactId);
     loadTimeline(convo.contactId);
+  }
+
+  async function handleSendMessage() {
+    if (!messageText.trim() || !selectedId || sending) return;
+
+    setSending(true);
+    try {
+      // Get first active WhatsApp account
+      const { data: accounts } = await supabase
+        .from("whatsapp_accounts")
+        .select("id")
+        .eq("tenant_id", TENANT_ID)
+        .eq("account_status", "CONNECTED")
+        .limit(1);
+
+      if (!accounts || accounts.length === 0) {
+        toast.error("Nenhuma conta WhatsApp conectada encontrada.");
+        return;
+      }
+
+      const accountId = accounts[0].id;
+      const phone = contact?.phone || selectedId;
+
+      // Call API
+      await api.sendTextMessage(phone, messageText, accountId);
+
+      // Optimistic update
+      const newMessage: TimelineMsg = {
+        id: Math.random().toString(36).substr(2, 9),
+        type: "sent",
+        content: messageText,
+        timestamp: new Date().toISOString(),
+        status: "sent",
+      };
+      setTimeline((prev) => [...prev, newMessage]);
+      setMessageText("");
+      toast.success("Mensagem enviada");
+    } catch (err) {
+      console.error("Send message error:", err);
+      toast.error("Erro ao enviar mensagem");
+    } finally {
+      setSending(false);
+    }
   }
 
   const selectedConvo = conversations.find((c) => c.contactId === selectedId);
@@ -413,16 +458,22 @@ export default function Inbox() {
                   onChange={(e) => setMessageText(e.target.value)}
                   placeholder="Digite uma mensagem..."
                   rows={1}
-                  className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  disabled={sending}
+                  className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
-                      // send message logic
+                      handleSendMessage();
                     }
                   }}
                 />
               </div>
-              <Button size="icon" className="bg-primary text-primary-foreground hover:bg-secondary shrink-0">
+              <Button 
+                size="icon" 
+                onClick={handleSendMessage}
+                disabled={sending || !messageText.trim()}
+                className="bg-primary text-primary-foreground hover:bg-secondary shrink-0"
+              >
                 <SendHorizontal className="w-5 h-5" />
               </Button>
             </div>

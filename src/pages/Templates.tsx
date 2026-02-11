@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, Plus, Eye, Send as SendIcon, Smartphone } from "lucide-react";
+import { FileText, Plus, Eye, Send as SendIcon, Smartphone, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Template {
@@ -45,6 +47,7 @@ export default function Templates() {
   const [accounts, setAccounts] = useState<WaAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Create form state
   const [selectedAccount, setSelectedAccount] = useState("");
@@ -61,6 +64,7 @@ export default function Templates() {
   }, []);
 
   async function fetchData() {
+    setLoading(true);
     const [templatesRes, accountsRes] = await Promise.all([
       supabase
         .from("templates")
@@ -82,6 +86,53 @@ export default function Templates() {
     PENDING: "bg-muted text-muted-foreground",
     REJECTED: "bg-destructive/10 text-destructive",
   };
+
+  async function handleCreateTemplate() {
+    if (!selectedAccount || !templateName || !bodyText) {
+      toast.error("Preencha os campos obrigatórios");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const components = [];
+      
+      if (headerType === "TEXT" && headerText) {
+        components.push({ type: "HEADER", format: "TEXT", text: headerText });
+      } else if (headerType === "IMAGE") {
+        components.push({ type: "HEADER", format: "IMAGE", example: { header_handle: [""] } });
+      }
+
+      components.push({ type: "BODY", text: bodyText });
+
+      if (footerText) {
+        components.push({ type: "FOOTER", text: footerText });
+      }
+
+      await api.createTemplate({
+        account_id: selectedAccount,
+        name: templateName,
+        category,
+        language,
+        components
+      });
+
+      toast.success("Template enviado para aprovação!");
+      setShowCreate(false);
+      fetchData();
+      
+      // Reset form
+      setTemplateName("");
+      setBodyText("");
+      setHeaderText("");
+      setFooterText("");
+    } catch (err) {
+      console.error("Create template error:", err);
+      toast.error("Erro ao criar template");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   // Replace variables in body text for preview
   function renderPreviewBody(text: string) {
@@ -261,8 +312,8 @@ export default function Templates() {
                   placeholder="Texto do footer"
                 />
               </div>
-              <Button className="w-full gap-2">
-                <SendIcon className="w-4 h-4" />
+              <Button onClick={handleCreateTemplate} disabled={submitting} className="w-full gap-2">
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <SendIcon className="w-4 h-4" />}
                 Enviar para Aprovação
               </Button>
             </div>
@@ -286,42 +337,24 @@ export default function Templates() {
                     {(bodyText || headerText || footerText) ? (
                       <div className="bg-card rounded-lg shadow-sm max-w-[85%] ml-auto">
                         {headerType === "TEXT" && headerText && (
-                          <div className="px-3 pt-2">
-                            <p className="text-xs font-bold text-foreground">{headerText}</p>
+                          <div className="px-3 py-2 border-b border-border/50 font-bold text-sm">
+                            {headerText}
                           </div>
                         )}
-                        {headerType === "IMAGE" && (
-                          <div className="w-full h-32 bg-muted rounded-t-lg flex items-center justify-center">
-                            <span className="text-xs text-muted-foreground">📷 Imagem</span>
-                          </div>
-                        )}
-                        {bodyText && (
-                          <div className="px-3 py-2">
-                            <p className="text-xs text-foreground whitespace-pre-wrap">
-                              {renderPreviewBody(bodyText)}
-                            </p>
-                          </div>
-                        )}
-                        {footerText && (
-                          <div className="px-3 pb-1">
-                            <p className="text-[10px] text-muted-foreground">{footerText}</p>
-                          </div>
-                        )}
-                        <div className="px-3 pb-1.5 flex justify-end">
-                          <span className="text-[10px] text-muted-foreground">12:00</span>
+                        <div className="px-3 py-2 text-sm whitespace-pre-wrap">
+                          {renderPreviewBody(bodyText)}
                         </div>
+                        {footerText && (
+                          <div className="px-3 py-1.5 text-[10px] text-muted-foreground border-t border-border/30">
+                            {footerText}
+                          </div>
+                        )}
                       </div>
                     ) : (
-                      <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                        <p>Preencha os campos para ver o preview</p>
+                      <div className="h-full flex items-center justify-center text-muted-foreground text-xs text-center p-8">
+                        Preencha o conteúdo para visualizar o preview
                       </div>
                     )}
-                  </div>
-                  {/* Input mockup */}
-                  <div className="bg-card border-t border-border px-3 py-2">
-                    <div className="bg-muted rounded-full px-3 py-1.5 text-xs text-muted-foreground">
-                      Digite uma mensagem...
-                    </div>
                   </div>
                 </div>
               </div>
