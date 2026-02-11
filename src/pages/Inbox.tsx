@@ -169,39 +169,53 @@ export default function Inbox() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [timeline]);
 
-  async function loadTimeline(contactId: string) {
-    setTimelineLoading(true);
+  // Polling inteligente como backup para o Realtime
+  useEffect(() => {
+    if (!selectedId) return;
+
+    // Atualiza a timeline a cada 5 segundos para garantir o tempo real
+    const interval = setInterval(() => {
+      loadTimeline(selectedId, true);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [selectedId]); // Reinicia o polling quando mudar de conversa
+
+  async function loadTimeline(contactId: string, isPolling = false) {
+    if (!isPolling) setTimelineLoading(true);
     try {
-      // Fetch contact
-      let contactData = null;
-      if (isUUID(contactId)) {
-        const { data } = await supabase
-          .from("contacts")
-          .select("*")
-          .eq("id", contactId)
-          .maybeSingle();
-        contactData = data;
-      }
-      if (!contactData) {
-        const { data } = await supabase
-          .from("contacts")
-          .select("*")
-          .eq("phone", contactId)
-          .eq("tenant_id", TENANT_ID)
-          .maybeSingle();
-        contactData = data;
-      }
-      if (contactData) {
-        setContact({
-          id: contactData.id,
-          name: contactData.name,
-          phone: contactData.phone,
-          email: contactData.email,
-          tags: contactData.tags || [],
-          created_at: contactData.created_at || "",
-        });
-      } else {
-        setContact(null);
+      // Só busca dados do contato se não for polling ou se não tivermos o contato ainda
+      if (!isPolling || !contact) {
+        let contactData = null;
+        if (isUUID(contactId)) {
+          const { data } = await supabase
+            .from("contacts")
+            .select("*")
+            .eq("id", contactId)
+            .maybeSingle();
+          contactData = data;
+        }
+        if (!contactData) {
+          const { data } = await supabase
+            .from("contacts")
+            .select("*")
+            .eq("phone", contactId)
+            .eq("tenant_id", TENANT_ID)
+            .maybeSingle();
+          contactData = data;
+        }
+        if (contactData) {
+          setContact({
+            id: contactData.id,
+            name: contactData.name,
+            phone: contactData.phone,
+            email: contactData.email,
+            tags: contactData.tags || [],
+            created_at: contactData.created_at || "",
+          });
+        } else {
+          setContact(null);
+        }
       }
 
       // Fetch sent messages from both message_logs (campaigns) and messages (chat)
@@ -268,6 +282,7 @@ export default function Inbox() {
 
   function selectConversation(convo: Conversation) {
     setSelectedId(convo.contactId);
+    setTimeline([]); // Limpa a timeline ao trocar de conversa
     loadTimeline(convo.contactId);
   }
 
@@ -360,10 +375,10 @@ export default function Inbox() {
         } catch (dbErr) {
           console.error("Database persistence error:", dbErr);
         } finally {
-          // Recarregar timeline após um pequeno delay para sincronizar IDs reais do banco
-          setTimeout(() => {
-            if (selectedId) loadTimeline(selectedId);
-          }, 1000);
+      // Recarregar timeline após um pequeno delay para sincronizar IDs reais do banco
+      setTimeout(() => {
+        if (selectedId) loadTimeline(selectedId, true);
+      }, 1000);
         }
       };
 
