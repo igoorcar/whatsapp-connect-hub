@@ -131,6 +131,13 @@ export default function Inbox() {
           if (selectedId) loadTimeline(selectedId);
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `tenant_id=eq.${TENANT_ID}` },
+        () => {
+          if (selectedId) loadTimeline(selectedId);
+        }
+      )
       .subscribe();
 
     return () => {
@@ -196,14 +203,22 @@ export default function Inbox() {
         setContact(null);
       }
 
-      // Fetch sent messages
-      const sentQuery = isUUID(contactId)
-        ? supabase.from("message_logs").select("*").eq("contact_id", contactId)
-        : supabase.from("message_logs").select("*").eq("to_phone", contactId);
-      const { data: sentMessages } = await sentQuery
-        .eq("tenant_id", TENANT_ID)
-        .order("sent_at", { ascending: true })
-        .limit(200);
+      // Fetch sent messages from both message_logs (campaigns) and messages (chat)
+      const [logsRes, msgsRes] = await Promise.all([
+        (isUUID(contactId)
+          ? supabase.from("message_logs").select("*").eq("contact_id", contactId)
+          : supabase.from("message_logs").select("*").eq("phone", contactId)
+        ).eq("tenant_id", TENANT_ID).order("sent_at", { ascending: true }).limit(100),
+        (isUUID(contactId)
+          ? supabase.from("messages").select("*").eq("contact_id", contactId)
+          : supabase.from("messages").select("*").eq("phone", contactId)
+        ).eq("tenant_id", TENANT_ID).eq("direction", "sent").order("sent_at", { ascending: true }).limit(100)
+      ]);
+
+      const sentMessages = [
+        ...(logsRes.data || []).map(m => ({ ...m, isLog: true })),
+        ...(msgsRes.data || []).map(m => ({ ...m, isLog: false }))
+      ];
 
       // Fetch received messages
       const recvQuery = isUUID(contactId)
@@ -218,7 +233,7 @@ export default function Inbox() {
         ...(sentMessages || []).map((msg: any) => ({
           id: msg.id,
           type: "sent" as const,
-          content: msg.text_content || msg.template_name || "[Template]",
+          content: msg.isLog ? (msg.text_content || msg.template_name || "Mensagem de Campanha") : (msg.content || ""),
           timestamp: msg.sent_at,
           status: msg.status,
           mediaUrl: msg.media_url,
@@ -275,15 +290,15 @@ export default function Inbox() {
       const phone = contact?.phone || selectedId;
 
       // 1. Salvar a mensagem no banco de dados para persistência
-      // Usando wa_account_id para consistência com o banco
+      // Usamos a tabela 'messages' para chat individual pois ela suporta o conteúdo da mensagem
       const { data: logData, error: logError } = await supabase
-        .from("message_logs")
+        .from("messages")
         .insert({
           tenant_id: TENANT_ID,
-          wa_account_id: accountId,
-          contact_id: contact?.id || null,
-          to_phone: phone,
-          text_content: currentText,
+          contact_id: (contact?.id && isUUID(contact.id)) ? contact.id : (isUUID(selectedId) ? selectedId : null),
+          phone: phone,
+          content: currentText,
+          direction: 'sent',
           status: 'sent',
           sent_at: new Date().toISOString()
         })
@@ -292,23 +307,50 @@ export default function Inbox() {
 
       if (logError) {
         console.error("Error logging message:", logError);
-        toast.error("Erro ao salvar mensagem no banco de dados");
-        setMessageText(currentText);
-        return;
+        // Fallback para message_logs se a tabela messages falhar por algum motivo de schema
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("message_logs")
+          .insert({
+            tenant_id: TENANT_ID,
+            wa_account_id: accountId,
+            campaign_id: accountId,
+            contact_id: (contact?.id && isUUID(contact.id)) ? contact.id : (isUUID(selectedId) ? selectedId : "00000000-0000-0000-0000-000000000001"),
+            phone: phone,
+            status: 'sent',
+            sent_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (fallbackError) {
+          console.error("Fallback error:", fallbackError);
+          toast.error("Erro ao salvar mensagem no banco de dados");
+          setMessageText(currentText);
+          return;
+        }
+        
+        // Se usou fallback, logData recebe fallbackData
+        const newMessage: TimelineMsg = {
+          id: fallbackData.id,
+          type: "sent",
+          content: currentText,
+          timestamp: fallbackData.sent_at || new Date().toISOString(),
+          status: 'sent'
+        };
+        setTimeline(prev => [...prev, newMessage]);
+      } else {
+        // Adicionar mensagem imediatamente à timeline para feedback instantâneo
+        const newMessage: TimelineMsg = {
+          id: logData.id,
+          type: "sent",
+          content: currentText,
+          timestamp: logData.sent_at || new Date().toISOString(),
+          status: 'sent'
+        };
+        setTimeline(prev => [...prev, newMessage]);
       }
 
-      // Adicionar mensagem imediatamente à timeline para feedback instantâneo
-      const newMessage: TimelineMsg = {
-        id: logData.id,
-        type: "sent",
-        content: currentText,
-        timestamp: logData.sent_at,
-        status: 'sent'
-      };
-      setTimeline(prev => [...prev, newMessage]);
-
       // 2. Chamar a API para enviar via WhatsApp
-      // O api.ts agora garante que wa_account_id seja enviado ao n8n
       try {
         await api.sendTextMessage(phone, currentText, accountId);
         toast.success("Mensagem enviada");
