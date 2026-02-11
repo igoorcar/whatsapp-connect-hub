@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -38,6 +39,7 @@ export default function Lists() {
   // Form state
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [manualNumbers, setManualNumbers] = useState("");
 
   useEffect(() => {
     fetchLists();
@@ -84,21 +86,66 @@ export default function Lists() {
     if (!name) return;
     setCreating(true);
     try {
-      const { error } = await supabase.from("contact_lists").insert({
-        name,
-        description,
-        tenant_id: TENANT_ID,
-        type: "MANUAL",
-      });
-      if (error) throw error;
+      // 1. Criar a lista
+      const { data: newList, error: listError } = await supabase
+        .from("contact_lists")
+        .insert({
+          name,
+          description,
+          tenant_id: TENANT_ID,
+          type: "MANUAL",
+        })
+        .select()
+        .single();
+
+      if (listError) throw listError;
+
+      // 2. Processar números manuais se houver
+      if (manualNumbers.trim()) {
+        const numbers = manualNumbers
+          .split(/[\n,;]/)
+          .map(n => n.trim().replace(/\D/g, ""))
+          .filter(n => n.length >= 8);
+
+        if (numbers.length > 0) {
+          // Criar/Atualizar contatos
+          const contactsToUpsert = numbers.map(phone => ({
+            phone,
+            tenant_id: TENANT_ID,
+          }));
+
+          const { data: upsertedContacts, error: upsertError } = await supabase
+            .from("contacts")
+            .upsert(contactsToUpsert, { onConflict: "phone,tenant_id" })
+            .select();
+
+          if (upsertError) throw upsertError;
+
+          // Vincular contatos à lista
+          if (upsertedContacts && upsertedContacts.length > 0) {
+            const membersToInsert = upsertedContacts.map(c => ({
+              list_id: newList.id,
+              contact_id: c.id,
+            }));
+
+            const { error: memberError } = await supabase
+              .from("contact_list_members")
+              .insert(membersToInsert);
+
+            if (memberError) throw memberError;
+          }
+        }
+      }
+
       toast.success("Lista criada com sucesso");
       setShowCreate(false);
       setName("");
       setDescription("");
+      setManualNumbers("");
       fetchLists();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Create list error:", err);
-      toast.error("Erro ao criar lista");
+      toast.error(err.message || "Erro ao criar lista");
     } finally {
       setCreating(false);
     }
@@ -114,13 +161,13 @@ export default function Lists() {
       try {
         const csv = event.target?.result as string;
         const lines = csv.split("\n");
-        const contacts = [];
+        const contactsToUpsert = [];
         
-        // Simple CSV parse (phone, name)
+        // 1. Parse CSV
         for (let i = 1; i < lines.length; i++) {
           const [phone, contactName] = lines[i].split(",");
           if (phone && phone.trim()) {
-            contacts.push({
+            contactsToUpsert.push({
               phone: phone.trim().replace(/\D/g, ""),
               name: contactName?.trim() || null,
               tenant_id: TENANT_ID,
@@ -128,14 +175,52 @@ export default function Lists() {
           }
         }
 
-        if (contacts.length > 0) {
-          const { error } = await supabase.from("contacts").upsert(contacts, { onConflict: "phone,tenant_id" });
-          if (error) throw error;
-          toast.success(`${contacts.length} contatos importados/atualizados`);
+        if (contactsToUpsert.length === 0) {
+          toast.error("Nenhum contato válido encontrado no CSV");
+          return;
         }
-      } catch (err) {
+
+        // 2. Criar uma lista automática para esta importação
+        const { data: newList, error: listError } = await supabase
+          .from("contact_lists")
+          .insert({
+            name: `Importação ${new Date().toLocaleDateString("pt-BR")} ${new Date().toLocaleTimeString("pt-BR")}`,
+            description: `Importado via CSV (${file.name})`,
+            tenant_id: TENANT_ID,
+            type: "IMPORT",
+          })
+          .select()
+          .single();
+
+        if (listError) throw listError;
+
+        // 3. Upsert contatos
+        const { data: upsertedContacts, error: upsertError } = await supabase
+          .from("contacts")
+          .upsert(contactsToUpsert, { onConflict: "phone,tenant_id" })
+          .select();
+
+        if (upsertError) throw upsertError;
+
+        // 4. Vincular à lista
+        if (upsertedContacts && upsertedContacts.length > 0) {
+          const membersToInsert = upsertedContacts.map(c => ({
+            list_id: newList.id,
+            contact_id: c.id,
+          }));
+
+          const { error: memberError } = await supabase
+            .from("contact_list_members")
+            .insert(membersToInsert);
+
+          if (memberError) throw memberError;
+        }
+
+        toast.success(`${contactsToUpsert.length} contatos importados na lista "${newList.name}"`);
+        fetchLists();
+      } catch (err: any) {
         console.error("Import error:", err);
-        toast.error("Erro ao importar CSV");
+        toast.error(err.message || "Erro ao importar CSV");
       } finally {
         setImporting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -191,6 +276,18 @@ export default function Lists() {
                 <div className="space-y-2">
                   <Label>Descrição</Label>
                   <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Opcional..." />
+                </div>
+                <div className="space-y-2">
+                  <Label>Números (um por linha ou separados por vírgula)</Label>
+                  <Textarea 
+                    value={manualNumbers} 
+                    onChange={(e) => setManualNumbers(e.target.value)} 
+                    placeholder="Ex: 5511999999999&#10;5511888888888"
+                    className="min-h-[120px] font-mono text-xs"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Você também pode importar via CSV usando o botão no topo da página.
+                  </p>
                 </div>
               </div>
               <DialogFooter>
