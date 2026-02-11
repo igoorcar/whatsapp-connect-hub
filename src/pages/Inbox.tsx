@@ -63,6 +63,7 @@ export default function Inbox() {
   const [filteredConvos, setFilteredConvos] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [timeline, setTimeline] = useState<TimelineMsg[]>([]);
+  const [localMessages, setLocalMessages] = useState<Record<string, TimelineMsg[]>>({});
   const [contact, setContact] = useState<ContactDetails | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -204,33 +205,36 @@ export default function Inbox() {
       }
 
       // Fetch sent messages from both message_logs (campaigns) and messages (chat)
-      const [logsRes, msgsRes] = await Promise.all([
-        (isUUID(contactId)
+      // Usamos try/catch individual para evitar que erro 401/400 em uma tabela trave tudo
+      let sentMessages: any[] = [];
+      let receivedMessages: any[] = [];
+
+      try {
+        const { data: logsData } = await (isUUID(contactId)
           ? supabase.from("message_logs").select("*").eq("contact_id", contactId)
           : supabase.from("message_logs").select("*").eq("phone", contactId)
-        ).eq("tenant_id", TENANT_ID).order("sent_at", { ascending: true }).limit(100),
-        (isUUID(contactId)
+        ).eq("tenant_id", TENANT_ID).order("sent_at", { ascending: true }).limit(100);
+        if (logsData) sentMessages.push(...logsData.map(m => ({ ...m, isLog: true })));
+      } catch (e) { console.error("Error fetching logs:", e); }
+
+      try {
+        const { data: msgsData } = await (isUUID(contactId)
           ? supabase.from("messages").select("*").eq("contact_id", contactId)
           : supabase.from("messages").select("*").eq("phone", contactId)
-        ).eq("tenant_id", TENANT_ID).eq("direction", "sent").order("sent_at", { ascending: true }).limit(100)
-      ]);
+        ).eq("tenant_id", TENANT_ID).eq("direction", "sent").order("sent_at", { ascending: true }).limit(100);
+        if (msgsData) sentMessages.push(...msgsData.map(m => ({ ...m, isLog: false })));
+      } catch (e) { console.error("Error fetching messages:", e); }
 
-      const sentMessages = [
-        ...(logsRes.data || []).map(m => ({ ...m, isLog: true })),
-        ...(msgsRes.data || []).map(m => ({ ...m, isLog: false }))
-      ];
+      try {
+        const { data: recvData } = await (isUUID(contactId)
+          ? supabase.from("replies").select("*").eq("contact_id", contactId)
+          : supabase.from("replies").select("*").eq("from_phone", contactId)
+        ).eq("tenant_id", TENANT_ID).order("replied_at", { ascending: true }).limit(200);
+        if (recvData) receivedMessages = recvData;
+      } catch (e) { console.error("Error fetching replies:", e); }
 
-      // Fetch received messages
-      const recvQuery = isUUID(contactId)
-        ? supabase.from("replies").select("*").eq("contact_id", contactId)
-        : supabase.from("replies").select("*").eq("from_phone", contactId);
-      const { data: receivedMessages } = await recvQuery
-        .eq("tenant_id", TENANT_ID)
-        .order("replied_at", { ascending: true })
-        .limit(200);
-
-      const tl: TimelineMsg[] = [
-        ...(sentMessages || []).map((msg: any) => ({
+      const dbTimeline: TimelineMsg[] = [
+        ...sentMessages.map((msg: any) => ({
           id: msg.id,
           type: "sent" as const,
           content: msg.isLog ? (msg.text_content || msg.template_name || "Mensagem de Campanha") : (msg.content || ""),
@@ -238,7 +242,7 @@ export default function Inbox() {
           status: msg.status,
           mediaUrl: msg.media_url,
         })),
-        ...(receivedMessages || []).map((msg: any) => ({
+        ...receivedMessages.map((msg: any) => ({
           id: msg.id,
           type: "received" as const,
           content: msg.content || "",
@@ -246,9 +250,15 @@ export default function Inbox() {
           classification: msg.classification,
           mediaUrl: msg.media_id,
         })),
-      ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      ];
 
-      setTimeline(tl);
+      // Combinar com mensagens locais para garantir que o que foi enviado agora apareça
+      const currentLocal = localMessages[contactId] || [];
+      const combined = [...dbTimeline, ...currentLocal]
+        .filter((v, i, a) => a.findIndex(t => t.id === v.id) === i) // Remover duplicatas por ID
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+      setTimeline(combined);
     } catch (err) {
       console.error("Load timeline error:", err);
     } finally {
@@ -290,15 +300,20 @@ export default function Inbox() {
       const accountId = activeAccount.id;
       const phone = contact?.phone || selectedId;
 
-      // 2. Adicionar mensagem IMEDIATAMENTE à timeline local (Feedback Visual Instantâneo)
+      // 2. Adicionar mensagem IMEDIATAMENTE à timeline local e ao estado persistente local
       const tempId = crypto.randomUUID();
       const newMessage: TimelineMsg = {
         id: tempId,
         type: "sent",
         content: currentText,
         timestamp: new Date().toISOString(),
-        status: 'sending'
+        status: 'sent'
       };
+      
+      setLocalMessages(prev => ({
+        ...prev,
+        [selectedId]: [...(prev[selectedId] || []), newMessage]
+      }));
       setTimeline(prev => [...prev, newMessage]);
 
       // 3. Chamar o Webhook do n8n PRIMEIRO (Prioridade: Envio da Mensagem)
