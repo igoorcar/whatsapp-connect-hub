@@ -124,6 +124,13 @@ export default function Inbox() {
           if (selectedId) loadTimeline(selectedId);
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "message_logs", filter: `tenant_id=eq.${TENANT_ID}` },
+        () => {
+          if (selectedId) loadTimeline(selectedId);
+        }
+      )
       .subscribe();
 
     return () => {
@@ -266,16 +273,7 @@ export default function Inbox() {
 
       // Call API
       await api.sendTextMessage(phone, messageText, accountId);
-
-      // Optimistic update
-      const newMessage: TimelineMsg = {
-        id: Math.random().toString(36).substr(2, 9),
-        type: "sent",
-        content: messageText,
-        timestamp: new Date().toISOString(),
-        status: "sent",
-      };
-      setTimeline((prev) => [...prev, newMessage]);
+      
       setMessageText("");
       toast.success("Mensagem enviada");
     } catch (err) {
