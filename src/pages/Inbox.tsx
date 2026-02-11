@@ -119,9 +119,13 @@ export default function Inbox() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "replies", filter: `tenant_id=eq.${TENANT_ID}` },
-        () => {
+        (payload) => {
+          console.log("New reply received:", payload);
           fetchConversations();
-          if (selectedId) loadTimeline(selectedId);
+          // Se a mensagem recebida for do contato selecionado, atualiza a timeline
+          if (selectedId && (payload.new.from_phone === selectedId || payload.new.contact_id === selectedId)) {
+            loadTimeline(selectedId);
+          }
         }
       )
       .on(
@@ -206,7 +210,7 @@ export default function Inbox() {
       // Fetch sent messages
       const sentQuery = isUUID(contactId)
         ? supabase.from("message_logs").select("*").eq("contact_id", contactId)
-        : supabase.from("message_logs").select("*").eq("to_phone", contactId);
+        : supabase.from("message_logs").select("*").eq("phone", contactId);
       const { data: sentMessages } = await sentQuery
         .eq("tenant_id", TENANT_ID)
         .order("sent_at", { ascending: true })
@@ -225,7 +229,7 @@ export default function Inbox() {
         ...(sentMessages || []).map((msg: any) => ({
           id: msg.id,
           type: "sent" as const,
-          content: msg.text_content || msg.template_name || "[Template]",
+          content: msg.text_content || msg.content || msg.template_name || "[Template]",
           timestamp: msg.sent_at,
           status: msg.status,
           mediaUrl: msg.media_url,
