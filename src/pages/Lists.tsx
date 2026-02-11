@@ -146,25 +146,50 @@ export default function Lists() {
       const listTag = `list:${selectedList.id}`;
       const newTags = currentTags.includes(listTag) ? currentTags : [...currentTags, listTag];
 
+      // Tenta o upsert com list_id e restrição de unicidade
       const { error } = await supabase.from("contacts").upsert({
         phone,
-        name: newContactName || null,
+        name: newContactName || "",
         tenant_id: TENANT_ID,
         tags: newTags,
-        // Mantemos o list_id para quando a coluna for criada
-        ...(true ? { list_id: selectedList.id } : {}) 
+        list_id: selectedList.id
       }, { onConflict: "phone,tenant_id" });
 
       if (error) {
-        // Se der erro 400 (coluna list_id não existe), tenta sem ela
-        const { error: retryError } = await supabase.from("contacts").upsert({
+        console.warn("Primeira tentativa de upsert falhou, tentando fallback...", error);
+        
+        // Fallback 1: Tenta sem o list_id (caso a coluna não tenha sido criada corretamente)
+        const { error: errorNoList } = await supabase.from("contacts").upsert({
           phone,
-          name: newContactName || null,
+          name: newContactName || "",
           tenant_id: TENANT_ID,
           tags: newTags
         }, { onConflict: "phone,tenant_id" });
-        
-        if (retryError) throw retryError;
+
+        if (errorNoList) {
+          console.warn("Segunda tentativa de upsert falhou, tentando insert simples...", errorNoList);
+          
+          // Fallback 2: Tenta um insert simples (caso a restrição onConflict não exista)
+          const { error: errorInsert } = await supabase.from("contacts").insert({
+            phone,
+            name: newContactName || "",
+            tenant_id: TENANT_ID,
+            tags: newTags,
+            list_id: selectedList.id
+          });
+
+          if (errorInsert) {
+            // Fallback 3: Insert simples sem list_id
+            const { error: errorFinal } = await supabase.from("contacts").insert({
+              phone,
+              name: newContactName || "",
+              tenant_id: TENANT_ID,
+              tags: newTags
+            });
+            
+            if (errorFinal) throw errorFinal;
+          }
+        }
       }
 
       toast.success("Contato adicionado");
