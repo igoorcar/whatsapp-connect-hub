@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, Plus, Eye, Send as SendIcon, Smartphone, Loader2 } from "lucide-react";
+import { FileText, Plus, Eye, Send as SendIcon, Smartphone, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Template {

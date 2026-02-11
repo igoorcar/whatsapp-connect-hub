@@ -233,7 +233,16 @@ export default function Inbox() {
         })),
       ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-      setTimeline(tl);
+      // Merge with existing temporary messages to avoid flicker
+      setTimeline((prev) => {
+        const tempMsgs = prev.filter(m => m.id.startsWith("temp-"));
+        // Filter out temp messages that are now in the real timeline (by content and approximate time)
+        const uniqueTempMsgs = tempMsgs.filter(temp => 
+          !tl.some(real => real.content === temp.content && 
+            Math.abs(new Date(real.timestamp).getTime() - new Date(temp.timestamp).getTime()) < 10000)
+        );
+        return [...tl, ...uniqueTempMsgs].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      });
     } catch (err) {
       console.error("Load timeline error:", err);
     } finally {
@@ -271,11 +280,32 @@ export default function Inbox() {
       const accountId = activeAccount.id;
       const phone = contact?.phone || selectedId;
 
-      // Call API
-      await api.sendTextMessage(phone, messageText, accountId);
+      // Optimistic update
+      const tempId = "temp-" + Math.random().toString(36).substr(2, 9);
+      const newMessage: TimelineMsg = {
+        id: tempId,
+        type: "sent",
+        content: messageText,
+        timestamp: new Date().toISOString(),
+        status: "sending",
+      };
       
+      setTimeline((prev) => [...prev, newMessage]);
+      const currentText = messageText;
       setMessageText("");
-      toast.success("Mensagem enviada");
+
+      // Call API
+      try {
+        await api.sendTextMessage(phone, currentText, accountId);
+        toast.success("Mensagem enviada");
+        // We don't remove the temp message here, the Realtime listener will handle it
+        // by matching content/timestamp or we can just let it be replaced when the list reloads
+      } catch (err) {
+        // Remove optimistic message on error
+        setTimeline((prev) => prev.filter(m => m.id !== tempId));
+        setMessageText(currentText); // Restore text
+        throw err;
+      }
     } catch (err) {
       console.error("Send message error:", err);
       toast.error("Erro ao enviar mensagem");
